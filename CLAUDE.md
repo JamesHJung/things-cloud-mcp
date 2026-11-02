@@ -46,9 +46,24 @@ The `sync` package provides a persistent sync engine that:
 - Uses transaction batching for fast initial syncs (4000+ items in ~2.5 seconds)
 
 Key types:
-- **`Syncer`** — Main sync controller with `Sync()`, `State()`, `ChangesSince()` methods
+- **`Syncer`** — Main sync controller with `Sync()`, `State()`, `ChangesSince()`, `Rebuild()`, `Diagnose()` methods
 - **`State`** — Query interface: `TasksInInbox()`, `TasksInToday()`, `TasksInAnytime()`, `TasksInSomeday()`, `TasksInUpcoming()`, `AllTasks()`, etc.
 - **`Change`** — Interface for semantic changes with `ChangeType()`, `EntityUUID()`, `Timestamp()`
+
+Sync internals worth knowing before changing this package:
+- **`sync/kind.go`** — routes items by entity *family*, stripping the version
+  suffix Things Cloud bumps between releases (`Task6`/`Task7` → task). Never
+  match `ItemKind` against a literal list; that is how `Task7` deletions were
+  silently dropped.
+- **`sync/cascade.go`** — re-derives the child effects of container changes
+  (trash/restore/delete). Things Cloud sends only the container's own item.
+  Cascades are applied to the tables but never written to `change_log`.
+- **`sync/fields.go`** — classifies payload keys as applied / recognised-no-op /
+  genuinely unknown. Add a key here when you teach `applyTaskPayload` a new
+  field, or it will be reported as unknown.
+- **`sync/rebuild.go`** — `Rebuild()` replays `change_log` from index 0 through
+  the same `processItem` path as a live sync, so the two cannot drift apart.
+  `Diagnose()` reports the integrity invariants.
 
 ### State Aggregation (`state/memory`)
 
@@ -70,6 +85,7 @@ See `cmd/README.md` for detailed documentation. Key tools:
   - Supports `batch` command for multiple operations in one HTTP request
 - **`thingsync`** — JSON-based sync with workflow views (today, inbox, review, patterns)
 - **`synctest`** — Human-readable sync output for testing
+- **`rebuild`** — One-off repair: replays `change_log` to rebuild local state (no network needed)
 
 ### Test Infrastructure
 

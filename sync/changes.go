@@ -598,6 +598,21 @@ func (c ChecklistItemTitleChanged) ChangeType() string {
 	return "ChecklistItemTitleChanged"
 }
 
+// TaskFieldsUpdated reports a partial update that was applied to the row but
+// matched no named semantic change — for example a Today reorder ({"ti":N}) or
+// a repeating task's next-instance date ({"icsd":...}).
+//
+// Fields lists the payload keys that were written, in sorted order.
+type TaskFieldsUpdated struct {
+	taskChange
+	Fields []string
+}
+
+// ChangeType returns "TaskFieldsUpdated"
+func (c TaskFieldsUpdated) ChangeType() string {
+	return "TaskFieldsUpdated"
+}
+
 // UnknownChange represents a change that could not be categorized
 type UnknownChange struct {
 	baseChange
@@ -641,6 +656,7 @@ var (
 	_ Change = (*TaskTrashed)(nil)
 	_ Change = (*TaskRestored)(nil)
 	_ Change = (*TaskTagsChanged)(nil)
+	_ Change = (*TaskFieldsUpdated)(nil)
 
 	_ Change = (*ProjectCreated)(nil)
 	_ Change = (*ProjectDeleted)(nil)

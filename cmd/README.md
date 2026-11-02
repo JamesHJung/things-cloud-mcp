@@ -81,6 +81,31 @@ Output includes:
 - Daily summary (completed, created, moved)
 - Alerts (stale inbox, reschedule patterns, deadlines)
 
+### rebuild
+
+One-off repair for a sync database written before the sync layer handled
+`Task7` deletions and container cascades. Replays `change_log` from index 0 to
+rebuild the materialized tables. Needs no network access and no Things
+credentials — only the database file.
+
+```bash
+# Report integrity problems without changing anything
+go run ./cmd/rebuild -diagnose
+
+# Repair the default database (~/.things-workflow/sync.db)
+go run ./cmd/rebuild
+
+# Repair a specific database
+go run ./cmd/rebuild -db /path/to/sync.db
+
+# Keep the contents of deleted areas instead of deleting them
+go run ./cmd/rebuild -unfile-areas
+```
+
+`change_log` and `sync_state` are preserved, so the sync cursor survives and the
+next sync resumes normally. The command is idempotent. See the "Sync
+correctness" section of the top-level README for what it fixes.
+
 ### synctest
 
 Human-readable sync output for testing. Persists to temp directory.

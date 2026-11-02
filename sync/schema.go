@@ -1,6 +1,6 @@
 package sync
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 const schema = `
 -- Schema version tracking
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     alarm_time_offset INTEGER,
     recurrence_rule TEXT,
     today_index_ref INTEGER,
+    instance_creation_start_date INTEGER,
     deleted INTEGER DEFAULT 0
 );
 
@@ -89,7 +90,12 @@ CREATE TABLE IF NOT EXISTS change_log (
     change_type TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     entity_uuid TEXT NOT NULL,
-    payload TEXT
+    payload TEXT,
+    -- Raw Things Cloud envelope, kept so change_log can be replayed verbatim
+    -- by Rebuild: item_kind is the "e" field ("Task7", "Area3", ...) and
+    -- item_action the "t" field (0 create / 1 update / 2 delete).
+    item_kind TEXT,
+    item_action INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_change_log_synced_at ON change_log(synced_at);
@@ -126,10 +132,17 @@ CREATE INDEX IF NOT EXISTS idx_checklist_items_task_uuid ON checklist_items(task
 `
 
 // migration3 adds today_index_ref column to store tir separately from sr.
-const migration3 = `
-ALTER TABLE tasks ADD COLUMN today_index_ref INTEGER;
+const migration3Index = `
 CREATE INDEX IF NOT EXISTS idx_tasks_today_index_ref ON tasks(today_index_ref);
 `
+
+func (s *Syncer) migrate3() error {
+	if err := s.addColumnIfMissing("tasks", "today_index_ref", "INTEGER"); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(migration3Index)
+	return err
+}
 
 // migration4 invalidates the local cache so previously corrupted sr/tir state
 // is rebuilt from Things Cloud history on the next sync.
@@ -143,6 +156,54 @@ DELETE FROM tags;
 DELETE FROM change_log;
 DELETE FROM sync_state;
 `
+
+// migration5 records the raw Things Cloud envelope (kind + action) alongside
+// each logged change and adds the repeating-instance date column.
+//
+// Unlike migration4 this does NOT clear the materialized tables: change_log
+// holds the full payload history, so an existing install repairs itself with
+// the `rebuild` command (sync.Rebuild) instead of re-pulling from the server.
+var migration5Columns = []struct{ table, column, decl string }{
+	{"change_log", "item_kind", "TEXT"},
+	{"change_log", "item_action", "INTEGER"},
+	{"tasks", "instance_creation_start_date", "INTEGER"},
+}
+
+// hasColumn reports whether a table already defines a column.
+func (s *Syncer) hasColumn(table, column string) (bool, error) {
+	rows, err := s.db.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	return rows.Next(), rows.Err()
+}
+
+// addColumnIfMissing is an idempotent ALTER TABLE ADD COLUMN.
+//
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so a migration that is re-run
+// against a database where it already landed (or against one created from the
+// current base schema) would otherwise fail with "duplicate column name".
+func (s *Syncer) addColumnIfMissing(table, column, decl string) error {
+	exists, err := s.hasColumn(table, column)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + decl)
+	return err
+}
+
+func (s *Syncer) migrate5() error {
+	for _, c := range migration5Columns {
+		if err := s.addColumnIfMissing(c.table, c.column, c.decl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (s *Syncer) migrate() error {
 	// Check current version
@@ -169,12 +230,17 @@ func (s *Syncer) migrate() error {
 		}
 	}
 	if version < 3 {
-		if _, err := s.db.Exec(migration3); err != nil {
+		if err := s.migrate3(); err != nil {
 			return err
 		}
 	}
 	if version < 4 {
 		if _, err := s.db.Exec(migration4); err != nil {
+			return err
+		}
+	}
+	if version < 5 {
+		if err := s.migrate5(); err != nil {
 			return err
 		}
 	}

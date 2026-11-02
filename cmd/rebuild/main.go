@@ -1,0 +1,115 @@
+// Command rebuild repairs a Things sync database in place by replaying
+// change_log from server index 0.
+//
+// It is a one-off repair for databases written before the sync layer handled
+// "Task7" deletions and container cascades. change_log already holds every
+// payload Things Cloud sent, so the rebuild needs no network access and no
+// Things credentials — only the database file.
+//
+//	rebuild                      # repair the default database
+//	rebuild -db /path/to/sync.db # repair a specific database
+//	rebuild -diagnose            # report problems, change nothing
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/arthursoares/things-cloud-sdk/sync"
+)
+
+func defaultDBPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "sync.db"
+	}
+	return filepath.Join(home, ".things-workflow", "sync.db")
+}
+
+func printDiagnostics(label string, d sync.Diagnostics) {
+	fmt.Printf("%s:\n", label)
+	fmt.Printf("  rows surviving a logged deletion:         %d\n", d.StaleDeletes)
+	fmt.Printf("  untrashed children of trashed containers: %d (of which completed: %d)\n",
+		d.OrphanedChildren, d.OrphanedCompleted)
+	fmt.Printf("  change_log rows still genuinely unknown:  %d", d.GenuinelyUnknownRows)
+	if len(d.UnknownKinds) > 0 {
+		fmt.Printf(" (kinds: %s)", strings.Join(d.UnknownKinds, ", "))
+	}
+	fmt.Println()
+	fmt.Printf("  (legacy UnknownChange rows now parseable: %d)\n", d.LegacyUnknownRows)
+	fmt.Printf("  unresolved project/heading/area refs:     %d / %d / %d\n",
+		d.UnresolvedProject, d.UnresolvedHeading, d.UnresolvedArea)
+}
+
+func main() {
+	dbPath := flag.String("db", "", "Path to the SQLite sync database (default: ~/.things-workflow/sync.db)")
+	diagnoseOnly := flag.Bool("diagnose", false, "Report integrity problems without modifying the database")
+	unfileAreas := flag.Bool("unfile-areas", false,
+		"On AreaDeleted, keep the area's projects and to-dos and just clear their area, "+
+			"instead of deleting them as Things does")
+	flag.Parse()
+
+	path := *dbPath
+	if path == "" {
+		path = defaultDBPath()
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		log.Fatalf("database %s: %v", path, err)
+	}
+
+	// A nil client is fine: rebuild and diagnose never touch the network.
+	syncer, err := sync.Open(path, nil)
+	if err != nil {
+		log.Fatalf("opening %s: %v", path, err)
+	}
+	defer syncer.Close()
+
+	if *unfileAreas {
+		syncer.SetAreaDeleteMode(sync.AreaDeleteUnfilesContents)
+	}
+
+	fmt.Printf("Database: %s\n\n", path)
+
+	before, err := syncer.Diagnose()
+	if err != nil {
+		log.Fatalf("diagnose failed: %v", err)
+	}
+	printDiagnostics("Before", before)
+
+	if *diagnoseOnly {
+		return
+	}
+
+	fmt.Println("\nReplaying change_log from index 0...")
+	res, err := syncer.Rebuild()
+	if err != nil {
+		log.Fatalf("rebuild failed: %v", err)
+	}
+
+	fmt.Printf("  replayed %d items from %d change_log rows", res.ItemsReplayed, res.LogRows)
+	if res.Inferred > 0 {
+		fmt.Printf(" (%d envelopes inferred from pre-v5 rows)", res.Inferred)
+	}
+	fmt.Printf("\n  live rows: %d tasks, %d projects, %d headings, %d areas, %d tags, %d checklist items\n\n",
+		res.Tasks, res.Projects, res.Headings, res.Areas, res.Tags, res.ChecklistItems)
+
+	after, err := syncer.Diagnose()
+	if err != nil {
+		log.Fatalf("post-rebuild diagnose failed: %v", err)
+	}
+	printDiagnostics("After", after)
+
+	if after.UnresolvedArea > before.UnresolvedArea ||
+		after.UnresolvedProject > before.UnresolvedProject ||
+		after.UnresolvedHeading > before.UnresolvedHeading {
+		fmt.Println("\nNote: the replay restored container references that the previous state had")
+		fmt.Println("dropped. Where the referenced container has no create event in the retained")
+		fmt.Println("Things Cloud history, that reference cannot be resolved from change_log and is")
+		fmt.Println("counted above. The next Sync() will reconcile it if the server still has it.")
+	}
+}

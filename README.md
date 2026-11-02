@@ -140,6 +140,154 @@ Once connected, Claude can do pretty much everything you'd do in the Things app:
 
 </details>
 
+## Sync correctness: deletions, cascades, and the `Task7` bucket
+
+The sync layer mirrors Things Cloud history into SQLite. Three classes of event
+were mishandled; all three are fixed, and an existing database can be repaired
+in place with the [`rebuild`](#repairing-an-existing-database) command.
+
+### 1. Deletions were ignored (`Task7`)
+
+Items are routed by their `e` (entity kind) field, which Things Cloud versions:
+`Task3` → `Task4` → `Task6` → `Task7`. Routing matched a hard-coded list of
+kind names, so when Things began sending `Task7` **every task item of the new
+kind fell through to `UnknownChange` and was never applied**. The most visible
+consequence: emptying the Things trash emitted 354 deletions in one batch
+(server index 4694), 348 of which were `Task7` — they were logged with an empty
+payload and the task rows were left in place.
+
+Routing now classifies on the base kind name with the version suffix stripped
+(`sync/kind.go`), so `Task7` — and any future `Task8` — routes correctly without
+a code change. Deletions mark the row deleted and cascade to `task_tags` and
+`checklist_items`.
+
+### 2. Container changes did not cascade
+
+Things applies container operations to everything inside the container, but
+Things Cloud sends only the item for the container itself. Applying each item in
+isolation left children live under a trashed or deleted parent. On the database
+this was developed against, 66 to-dos (46 of them completed) sat untrashed under
+a trashed project.
+
+Cascades are now re-derived locally (`sync/cascade.go`), walking the hierarchy
+transitively through both `project_uuid` and `heading_uuid`:
+
+| Event | Effect on contents |
+|---|---|
+| `ProjectTrashed`, `TaskTrashed` (incl. headings) | `in_trash = 1` on all descendants |
+| `ProjectRestored`, `TaskRestored` | `in_trash = 0` on all descendants |
+| `ProjectDeleted`, `HeadingDeleted`, `TaskDeleted` | descendants marked deleted |
+| `AreaDeleted` | contents deleted — see below |
+| `ProjectCompleted` | **no cascade** (see below) |
+
+Cascades are applied to the materialized tables but are deliberately **not**
+written to `change_log`: the log stays a faithful record of what Things Cloud
+actually sent, so replaying it re-derives the cascade instead of double-applying
+a stale one.
+
+Two judgement calls worth knowing about:
+
+- **`ProjectCompleted` does not cascade status.** Completing a project in Things
+  logs the project but leaves its unfinished to-dos alone, so neither `status`
+  nor `in_trash` is propagated. (Trashing that project later *will* cascade, and
+  completed children are trashed along with everything else.)
+- **`AreaDeleted` deletes the area's contents** by default, matching Things'
+  own "its projects and to-dos will also be deleted" behaviour. This is the one
+  rule that was **not** verified against the Things app, and the only one that
+  removes rows a user might still expect to see — on the database this was
+  developed against it removes 15 rows, all previously completed. It is
+  therefore a switch, not an assumption:
+
+  ```go
+  syncer.SetAreaDeleteMode(sync.AreaDeleteUnfilesContents) // keep them, clear their area
+  ```
+
+  or `rebuild -unfile-areas`. If you confirm Things unfiles rather than deletes,
+  flip the default in `sync.AreaDeleteMode`.
+
+### 3. `UnknownChange` was too broad
+
+Things Cloud sends partial updates, and an update that produced no *named*
+semantic change used to vanish silently. Payload fields are now classified
+explicitly (`sync/fields.go`):
+
+- **applied** — written to the row. If no named change results, the update is
+  recorded as `TaskFieldsUpdated` with the field list, so it is still visible.
+  `{"ti":N}` (Today reorder) and `{"icsd":...}` (a repeating task's
+  next-instance date) are the common cases; `icsd` was previously parsed but
+  never written, making those updates no-ops. It now has its own column.
+- **recognised no-ops** — part of the wire format, deliberately not
+  materialized (`xx`, `rr`, `lt`, `icp`, `sb`, …). No change is emitted.
+- **genuinely unknown** — reported as `UnknownChange` *naming the fields*, so
+  the parser can be extended. An unparsable payload is likewise reported rather
+  than aborting the whole sync batch.
+
+`Settings*` and `Command*` items (the mail-to-inbox envelopes, whose effect also
+arrives as an ordinary `Task` item) are now recognised and skipped rather than
+counted as unknown. **`UnknownChange` now means genuinely unknown.**
+
+### Repairing an existing database
+
+`change_log` already holds every payload Things Cloud sent, so a database
+written by the old sync layer can be repaired without re-pulling the history.
+The `rebuild` command drops the materialized tables and replays `change_log`
+from index 0. It needs no network access and no Things credentials — only the
+database file.
+
+```bash
+go run ./cmd/rebuild -diagnose            # report problems, change nothing
+go run ./cmd/rebuild                      # repair ~/.things-workflow/sync.db
+go run ./cmd/rebuild -db /path/to/sync.db
+go run ./cmd/rebuild -unfile-areas        # keep contents of deleted areas
+```
+
+`change_log` and `sync_state` are left untouched, so the sync cursor survives
+and the next `Sync()` picks up where it left off. The replay reuses the same
+`processItem` path as a live sync, so a rebuild and a fresh sync cannot drift
+apart, and it is idempotent.
+
+Two things a replay cannot do:
+
+- **It does not relabel historic `change_log` rows.** Rows recorded as
+  `UnknownChange` by the old parser stay that way — the log is immutable. The
+  `-diagnose` output separates these ("legacy ... now parseable") from rows this
+  parser still cannot classify, which is the number that should be zero.
+- **It cannot resolve a reference to an entity that has no create event in the
+  retained history.** Things Cloud does not keep history forever; where an old
+  payload references an area that was created before the retained window, the
+  replay keeps the reference faithfully and `-diagnose` counts it as
+  unresolved.
+
+### Schema
+
+`schema_version` is **5**. Migration 5 is additive and, unlike migration 4, does
+**not** clear the cache — repair is via `rebuild` instead:
+
+- `change_log.item_kind`, `change_log.item_action` — the raw Things Cloud
+  envelope (`e` and `t`), so the log can be replayed verbatim. Rows written
+  before v5 have these as `NULL` and their envelope is inferred on replay from
+  `change_type` plus the payload. That inference needs `change_type`, because
+  the payload alone is ambiguous: an empty `{}` payload means a deletion on an
+  `UnknownChange` row but *not* on a `TaskCreated` row, which also occurs.
+- `tasks.instance_creation_start_date` — the `icsd` field.
+
+Column additions are idempotent (`ALTER TABLE` guarded by `pragma_table_info`),
+so a partially-applied migration no longer hard-fails on reopen.
+
+### UUID validation accepts legacy hyphenated IDs
+
+Write validation rejected anything that was not a Things Base58 UUID. Things
+Cloud still holds **uppercase hyphenated UUIDs** (8-4-4-4-12, e.g.
+`E1408FCA-A25C-4471-87F2-6F43B3E1D8DB`) for items imported around 2020, and the
+hyphens — along with characters Base58 excludes, such as `0`, `O` and `I` —
+failed the check. Those items were unaddressable through the MCP tools even
+though the server accepts operations on them. On the database this was developed
+against that was 589 tasks, 13 areas, 7 tags and 41 checklist items.
+
+Validation now accepts either form (`IsValidItemUUID`, in `uuid.go`, shared by
+the MCP server and `things-cli`). Lowercase hyphenated IDs are accepted too,
+since they appear in mail-to-inbox payloads. Malformed IDs are still rejected.
+
 ## Operational Notes
 
 - **Startup is fail-fast.** The server now requires the initial sync to succeed before it starts serving REST or MCP traffic.

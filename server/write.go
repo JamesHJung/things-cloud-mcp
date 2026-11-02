@@ -120,22 +120,11 @@ func isInvalidInput(err error) bool {
 	return errors.Is(err, errInvalidInput)
 }
 
-func isBase58UUID(id string) bool {
-	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	if len(id) < 20 || len(id) > 32 {
-		return false
-	}
-	for i := 0; i < len(id); i++ {
-		if !strings.ContainsRune(alphabet, rune(id[i])) {
-			return false
-		}
-	}
-	return true
-}
-
 func validateUUID(name, id string) error {
-	if !isBase58UUID(id) {
-		return invalidInputf("%s must be a Things Base58 UUID", name)
+	// Accepts both the Base58 UUIDs Things mints today and the legacy
+	// hyphenated ones Things Cloud still holds for items imported in 2020.
+	if !thingscloud.IsValidItemUUID(id) {
+		return invalidInputf("%s must be a Things Base58 UUID or a hyphenated UUID", name)
 	}
 	return nil
 }

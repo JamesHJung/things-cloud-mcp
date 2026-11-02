@@ -3,6 +3,7 @@ package sync
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	things "github.com/arthursoares/things-cloud-sdk"
@@ -43,7 +44,7 @@ func (s *Syncer) processItems(items []things.Item, baseIndex int) ([]Change, err
 		// Log each change
 		for _, change := range changes {
 			payload, _ := json.Marshal(item.P)
-			if err := txSyncer.logChange(serverIndex, change, string(payload)); err != nil {
+			if err := txSyncer.logChange(serverIndex, change, string(payload), item.Kind, item.Action); err != nil {
 				return nil, fmt.Errorf("logging change: %w", err)
 			}
 		}
@@ -59,23 +60,28 @@ func (s *Syncer) processItems(items []things.Item, baseIndex int) ([]Change, err
 }
 
 // processItem routes an item to the correct handler based on its Kind.
+//
+// Routing goes through classifyKind rather than an explicit kind list: Things
+// Cloud bumps the version suffix on entity names between app releases, and
+// matching exact names meant a new "Task7" kind silently became UnknownChange.
 func (s *Syncer) processItem(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
-	switch item.Kind {
-	case things.ItemKindTask, things.ItemKindTask4, things.ItemKindTask3, things.ItemKindTaskPlain:
+	switch classifyKind(item.Kind) {
+	case familyTask:
 		return s.processTaskItem(item, serverIndex, ts)
-	case things.ItemKindArea, things.ItemKindArea3, things.ItemKindAreaPlain:
+	case familyArea:
 		return s.processAreaItem(item, serverIndex, ts)
-	case things.ItemKindTag, things.ItemKindTag4, things.ItemKindTagPlain:
+	case familyTag:
 		return s.processTagItem(item, serverIndex, ts)
-	case things.ItemKindChecklistItem, things.ItemKindChecklistItem2, things.ItemKindChecklistItem3:
+	case familyChecklistItem:
 		return s.processChecklistItem(item, serverIndex, ts)
-	case things.ItemKindTombstone:
+	case familyTombstone:
 		return s.processTombstone(item, serverIndex, ts)
-	case things.ItemKindSettings:
-		// Settings items are ignored for now
+	case familyIgnored:
+		// Settings, and the mail-to-inbox "Command" envelopes whose effect
+		// also arrives as a regular Task item. Recognised, not materialised.
 		return nil, nil
 	default:
-		// Unknown item kind - create an UnknownChange
+		// Genuinely unrecognised entity kind.
 		return []Change{UnknownChange{
 			baseChange: baseChange{serverIndex: serverIndex, timestamp: ts},
 			entityType: string(item.Kind),
@@ -83,6 +89,13 @@ func (s *Syncer) processItem(item things.Item, serverIndex int, ts time.Time) ([
 			Details:    fmt.Sprintf("unknown item kind: %s", item.Kind),
 		}}, nil
 	}
+}
+
+// isEmptyPayload reports whether an item carries no fields at all. Things
+// Cloud sends "{}" (or nothing) as the payload of a deletion.
+func isEmptyPayload(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed == "" || trimmed == "{}" || trimmed == "null"
 }
 
 // processTaskItem handles task/project/heading items.
@@ -93,21 +106,45 @@ func (s *Syncer) processTaskItem(item things.Item, serverIndex int, ts time.Time
 		return nil, fmt.Errorf("getting task %s: %w", item.UUID, err)
 	}
 
-	// Handle deletion
+	base := baseChange{serverIndex: serverIndex, timestamp: ts}
+
+	// Handle deletion. Things Cloud sends these as t=2 with an empty payload;
+	// the entity's own type is only knowable from the row we already hold.
 	if item.Action == things.ItemActionDeleted {
+		// Cascade before the parent row disappears. Children reference the
+		// parent by project_uuid/heading_uuid, so this is safe in either
+		// order, but doing it first keeps the intent obvious.
+		if _, err := s.cascadeDelete(item.UUID); err != nil {
+			return nil, err
+		}
 		if old != nil {
 			if err := s.markTaskDeleted(item.UUID); err != nil {
 				return nil, fmt.Errorf("marking task deleted: %w", err)
 			}
+			return detectTaskChanges(old, nil, serverIndex, ts), nil
 		}
-		return detectTaskChanges(old, nil, serverIndex, ts), nil
+		// The row was never synced (or was already purged). Still record the
+		// deletion so change_log stays a complete account of the history.
+		return []Change{TaskDeleted{taskChange: taskChange{
+			baseChange: base,
+			Task:       &things.Task{UUID: item.UUID},
+		}}}, nil
 	}
 
-	// Unmarshal the payload
+	// Unmarshal the payload. A payload we cannot parse is genuinely unknown —
+	// report it rather than aborting the whole sync batch.
 	var payload things.TaskActionItemPayload
 	if err := json.Unmarshal(item.P, &payload); err != nil {
-		return nil, fmt.Errorf("unmarshaling task payload: %w", err)
+		return []Change{UnknownChange{
+			baseChange: base,
+			entityType: string(item.Kind),
+			entityUUID: item.UUID,
+			Details:    fmt.Sprintf("unparsable task payload: %v", err),
+		}}, nil
 	}
+
+	carried := payloadFields(item.P)
+	applied, unknown := classifyTaskFields(carried)
 
 	// Apply payload to build new state
 	newTask := applyTaskPayload(old, item.UUID, payload)
@@ -123,7 +160,61 @@ func (s *Syncer) processTaskItem(item things.Item, serverIndex int, ts time.Time
 	if err != nil {
 		return nil, fmt.Errorf("detecting task assignments: %w", err)
 	}
-	return append(changes, assignmentChanges...), nil
+	changes = append(changes, assignmentChanges...)
+
+	// An update that carried fields we applied but that matched no named
+	// semantic change used to vanish entirely (partial updates such as
+	// {"ti":N} or {"icsd":...}). Record it so the write is still visible.
+	if len(changes) == 0 && len(applied) > 0 {
+		changes = append(changes, TaskFieldsUpdated{
+			taskChange: taskChange{baseChange: base, Task: newTask},
+			Fields:     applied,
+		})
+	}
+
+	// Fields the wire format carries that this parser does not model at all.
+	// Surfacing them is what makes "UnknownChange" actionable.
+	if len(unknown) > 0 {
+		changes = append(changes, UnknownChange{
+			baseChange: base,
+			entityType: string(item.Kind),
+			entityUUID: item.UUID,
+			Details:    "unhandled task fields: " + strings.Join(unknown, ","),
+		})
+	}
+
+	if err := s.applyTaskCascades(item.UUID, changes); err != nil {
+		return nil, err
+	}
+
+	return changes, nil
+}
+
+// applyTaskCascades re-derives the child effects of a container change.
+//
+// Things propagates these in its UI but Things Cloud only sends the item for
+// the container, so without this a project's to-dos stay live under a trashed
+// or deleted parent.
+func (s *Syncer) applyTaskCascades(uuid string, changes []Change) error {
+	for _, c := range changes {
+		switch c.(type) {
+		// Trashing a project or heading trashes everything inside it.
+		case ProjectTrashed, TaskTrashed:
+			if _, err := s.cascadeTrash(uuid, true); err != nil {
+				return err
+			}
+		// ...and restoring it brings them back.
+		case ProjectRestored, TaskRestored:
+			if _, err := s.cascadeTrash(uuid, false); err != nil {
+				return err
+			}
+		case ProjectDeleted, HeadingDeleted, TaskDeleted:
+			if _, err := s.cascadeDelete(uuid); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // processAreaItem handles area items.
@@ -134,8 +225,13 @@ func (s *Syncer) processAreaItem(item things.Item, serverIndex int, ts time.Time
 		return nil, fmt.Errorf("getting area %s: %w", item.UUID, err)
 	}
 
-	// Handle deletion
+	// Handle deletion. Deleting an area takes the projects and to-dos filed
+	// under it with it (see cascadeAreaDelete), which Things Cloud does not
+	// send separate items for.
 	if item.Action == things.ItemActionDeleted {
+		if _, err := s.cascadeAreaDelete(item.UUID); err != nil {
+			return nil, err
+		}
 		if old != nil {
 			if err := s.markAreaDeleted(item.UUID); err != nil {
 				return nil, fmt.Errorf("marking area deleted: %w", err)
@@ -314,6 +410,9 @@ func (s *Syncer) processTombstone(item things.Item, serverIndex int, ts time.Tim
 	// Try to find and delete the object in each table
 	// Check if it's a task
 	if task, _ := s.getTask(deletedUUID); task != nil {
+		if _, err := s.cascadeDelete(deletedUUID); err != nil {
+			return nil, err
+		}
 		if err := s.markTaskDeleted(deletedUUID); err != nil {
 			return nil, fmt.Errorf("marking task deleted via tombstone: %w", err)
 		}
@@ -323,6 +422,9 @@ func (s *Syncer) processTombstone(item things.Item, serverIndex int, ts time.Tim
 
 	// Check if it's an area
 	if area, _ := s.getArea(deletedUUID); area != nil {
+		if _, err := s.cascadeAreaDelete(deletedUUID); err != nil {
+			return nil, err
+		}
 		if err := s.markAreaDeleted(deletedUUID); err != nil {
 			return nil, fmt.Errorf("marking area deleted via tombstone: %w", err)
 		}
@@ -384,6 +486,7 @@ func applyTaskPayload(old *things.Task, uuid string, p things.TaskActionItemPayl
 		t.TagIDs = old.TagIDs
 		t.RecurrenceIDs = old.RecurrenceIDs
 		t.DelegateIDs = old.DelegateIDs
+		t.InstanceCreationStartDate = old.InstanceCreationStartDate
 	}
 
 	// Apply each non-nil field from payload
@@ -468,6 +571,11 @@ func applyTaskPayload(old *things.Task, uuid string, p things.TaskActionItemPayl
 	}
 	if p.DelegateIDs != nil {
 		t.DelegateIDs = *p.DelegateIDs
+	}
+	if p.InstanceCreationStartDate != nil {
+		// icsd: next-instance date of a repeating task. Previously parsed but
+		// never written, so a repeating series' only update was a no-op.
+		t.InstanceCreationStartDate = p.InstanceCreationStartDate.Time()
 	}
 
 	// Handle Note specially: can be string or Note struct with patches

@@ -15,7 +15,8 @@ func (s *Syncer) getTask(uuid string) (*things.Task, error) {
 				uuid, type, title, note, status, schedule,
 				scheduled_date, deadline_date, completion_date, creation_date, modification_date,
 				"index", today_index, in_trash, area_uuid, project_uuid, heading_uuid,
-				alarm_time_offset, recurrence_rule, today_index_ref, deleted
+				alarm_time_offset, recurrence_rule, today_index_ref,
+				instance_creation_start_date, deleted
 			FROM tasks
 			WHERE uuid = ? AND deleted = 0
 		`, uuid)
@@ -37,6 +38,7 @@ func (s *Syncer) getTask(uuid string) (*things.Task, error) {
 		alarmTimeOffset  sql.NullInt64
 		recurrenceRule   sql.NullString
 		todayIndexRef    sql.NullInt64
+		instanceCreation sql.NullInt64
 		deleted          int
 	)
 
@@ -44,7 +46,7 @@ func (s *Syncer) getTask(uuid string) (*things.Task, error) {
 		&t.UUID, &taskType, &t.Title, &t.Note, &status, &schedule,
 		&scheduledDate, &deadlineDate, &completionDate, &creationDate, &modificationDate,
 		&t.Index, &t.TodayIndex, &inTrash, &areaUUID, &projectUUID, &headingUUID,
-		&alarmTimeOffset, &recurrenceRule, &todayIndexRef, &deleted,
+		&alarmTimeOffset, &recurrenceRule, &todayIndexRef, &instanceCreation, &deleted,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -82,6 +84,10 @@ func (s *Syncer) getTask(uuid string) (*things.Task, error) {
 	if todayIndexRef.Valid {
 		ts := time.Unix(todayIndexRef.Int64, 0).UTC()
 		t.TodayIndexReference = &ts
+	}
+	if instanceCreation.Valid {
+		ts := time.Unix(instanceCreation.Int64, 0).UTC()
+		t.InstanceCreationStartDate = &ts
 	}
 
 	// Convert nullable foreign keys to slices
@@ -168,6 +174,12 @@ func (s *Syncer) saveTask(t *things.Task) error {
 		todayIndexRef = sql.NullInt64{Int64: t.TodayIndexReference.Unix(), Valid: true}
 	}
 
+	// Convert repeating-instance creation date (icsd)
+	var instanceCreation sql.NullInt64
+	if t.InstanceCreationStartDate != nil {
+		instanceCreation = sql.NullInt64{Int64: t.InstanceCreationStartDate.Unix(), Valid: true}
+	}
+
 	// Convert InTrash to integer
 	var inTrash int
 	if t.InTrash {
@@ -180,13 +192,15 @@ func (s *Syncer) saveTask(t *things.Task) error {
 			uuid, type, title, note, status, schedule,
 			scheduled_date, deadline_date, completion_date, creation_date, modification_date,
 			"index", today_index, in_trash, area_uuid, project_uuid, heading_uuid,
-			alarm_time_offset, recurrence_rule, today_index_ref, deleted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+			alarm_time_offset, recurrence_rule, today_index_ref,
+			instance_creation_start_date, deleted
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 	`,
 		t.UUID, int(t.Type), t.Title, t.Note, int(t.Status), int(t.Schedule),
 		scheduledDate, deadlineDate, completionDate, creationDate, modificationDate,
 		t.Index, t.TodayIndex, inTrash, areaUUID, projectUUID, headingUUID,
 		alarmTimeOffset, sql.NullString{}, todayIndexRef, // recurrence_rule not directly on Task struct
+		instanceCreation,
 	)
 	if err != nil {
 		return err
@@ -208,9 +222,20 @@ func (s *Syncer) saveTask(t *things.Task) error {
 	return nil
 }
 
-// markTaskDeleted soft-deletes a task by setting its deleted flag to 1.
+// markTaskDeleted soft-deletes a task and its dependent rows.
+//
+// purgeDeleted also sweeps dependents at the end of a sync, but doing it here
+// keeps the cache consistent *within* a batch: a later item in the same
+// transaction must not see checklist items or tag links belonging to a task
+// that has already been deleted.
 func (s *Syncer) markTaskDeleted(uuid string) error {
-	_, err := s.db.Exec(`UPDATE tasks SET deleted = 1 WHERE uuid = ?`, uuid)
+	if _, err := s.db.Exec(`UPDATE tasks SET deleted = 1 WHERE uuid = ?`, uuid); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`UPDATE checklist_items SET deleted = 1 WHERE task_uuid = ?`, uuid); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM task_tags WHERE task_uuid = ?`, uuid)
 	return err
 }
 
@@ -401,12 +426,17 @@ func (s *Syncer) saveSyncState(historyID string, serverIndex int) error {
 	return err
 }
 
-// logChange records a change in the change log.
-func (s *Syncer) logChange(serverIndex int, change Change, payload string) error {
+// logChange records a change in the change log, along with the raw Things
+// Cloud envelope (kind + action) that produced it so Rebuild can replay the
+// log without having to guess at the original item.
+func (s *Syncer) logChange(serverIndex int, change Change, payload string, kind things.ItemKind, action things.ItemAction) error {
 	_, err := s.db.Exec(`
-		INSERT INTO change_log (server_index, synced_at, change_type, entity_type, entity_uuid, payload)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, serverIndex, time.Now().Unix(), change.ChangeType(), change.EntityType(), change.EntityUUID(), payload)
+		INSERT INTO change_log (
+			server_index, synced_at, change_type, entity_type, entity_uuid, payload,
+			item_kind, item_action
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, serverIndex, time.Now().Unix(), change.ChangeType(), change.EntityType(), change.EntityUUID(), payload,
+		string(kind), int(action))
 	return err
 }
 

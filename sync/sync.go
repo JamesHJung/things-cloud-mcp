@@ -31,14 +31,18 @@ type Syncer struct {
 	client  *things.Client
 	history *things.History
 	mu      gosync.RWMutex
+
+	// areaDeleteMode controls how area deletions cascade; see AreaDeleteMode.
+	areaDeleteMode AreaDeleteMode
 }
 
 func (s *Syncer) withDB(db dbExecutor) *Syncer {
 	return &Syncer{
-		rawDB:   s.rawDB,
-		db:      db,
-		client:  s.client,
-		history: s.history,
+		rawDB:          s.rawDB,
+		db:             db,
+		client:         s.client,
+		history:        s.history,
+		areaDeleteMode: s.areaDeleteMode,
 	}
 }
 

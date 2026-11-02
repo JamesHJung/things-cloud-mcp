@@ -60,6 +60,7 @@ var (
 	ItemKindChecklistItem3 ItemKind = "ChecklistItem3"
 	// ItemKindTask identifies a Task or Subtask
 	ItemKindTask      ItemKind = "Task6"
+	ItemKindTask7     ItemKind = "Task7"
 	ItemKindTask4     ItemKind = "Task4"
 	ItemKindTask3     ItemKind = "Task3"
 	ItemKindTaskPlain ItemKind = "Task"
@@ -68,7 +69,14 @@ var (
 	ItemKindArea3     ItemKind = "Area3"
 	ItemKindAreaPlain ItemKind = "Area"
 	// ItemKindSettings  identifies a setting
-	ItemKindSettings ItemKind = "Settings3"
+	ItemKindSettings  ItemKind = "Settings3"
+	ItemKindSettings4 ItemKind = "Settings4"
+	ItemKindSettings5 ItemKind = "Settings5"
+	// ItemKindCommand identifies a mail-to-inbox / share-extension command
+	// envelope. The command's effect also arrives as a regular Task item, so
+	// commands are recognised but not materialised.
+	ItemKindCommand  ItemKind = "Command"
+	ItemKindCommand3 ItemKind = "Command3"
 	// ItemKindTag identifies a Tag
 	ItemKindTag       ItemKind = "Tag3"
 	ItemKindTag4      ItemKind = "Tag4"
@@ -203,6 +211,9 @@ type Task struct {
 	TagIDs              []string
 	RecurrenceIDs       []string
 	DelegateIDs         []string
+	// InstanceCreationStartDate (icsd) is the date the next instance of a
+	// repeating task is due to be created.
+	InstanceCreationStartDate *time.Time
 }
 
 // TaskActionItemPayload describes the payload for modifying Tasks, and also Projects,

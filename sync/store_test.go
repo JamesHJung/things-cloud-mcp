@@ -651,7 +651,7 @@ func TestLogChange(t *testing.T) {
 
 	t.Run("log change entry", func(t *testing.T) {
 		change := TaskCreated{taskChange: taskChange{Task: &things.Task{UUID: "test-task", Title: "Test"}}}
-		if err := syncer.logChange(1, change, `{"test": true}`); err != nil {
+		if err := syncer.logChange(1, change, `{"test": true}`, things.ItemKindTask, things.ItemActionCreated); err != nil {
 			t.Fatalf("logChange failed: %v", err)
 		}
 
