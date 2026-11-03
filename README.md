@@ -4,6 +4,22 @@ A Go server and SDK for the [Things 3](https://culturedcode.com/things/) cloud A
 
 Built on a reverse-engineered, unofficial SDK — there is no official API documentation from Cultured Code.
 
+> **This is a maintained fork.** The upstream repository
+> [`mattydsmith/things-cloud-mcp`](https://github.com/mattydsmith/things-cloud-mcp)
+> was archived in March 2026 and no longer accepts pull requests, leaving two
+> open fixes permanently unmergeable. This fork carries on from there: it fixes
+> the sync layer's handling of deletions, container cascades and partial
+> updates (see
+> [Sync correctness](#sync-correctness-deletions-cascades-and-the-task7-bucket)),
+> adds a repair command for existing databases, and adds optional bearer
+> authentication so non-browser MCP clients can connect. Issues and pull
+> requests are welcome here.
+>
+> The sync engine originates in
+> [`arthursoares/things-cloud-sdk`](https://github.com/arthursoares/things-cloud-sdk),
+> which is actively maintained and is the better home for SDK-level fixes; the
+> MCP server layer is what this repository adds on top.
+
 ## What it does
 
 The server syncs your Things Cloud data into a local SQLite database and exposes it through two interfaces:
@@ -301,6 +317,76 @@ against that was 589 tasks, 13 areas, 7 tags and 41 checklist items.
 Validation now accepts either form (`IsValidItemUUID`, in `uuid.go`, shared by
 the MCP server and `things-cli`). Lowercase hyphenated IDs are accepted too,
 since they appear in mail-to-inbox payloads. Malformed IDs are still rejected.
+
+## Connecting MCP clients
+
+The server speaks **Streamable HTTP** MCP at `POST /mcp`. Any MCP-capable
+client can connect — the transport is not Claude-specific.
+
+### Authenticating: `MCP_TOKEN`
+
+`/mcp` is **unauthenticated by default**, on the assumption that the endpoint is
+gated somewhere else: an identity-aware proxy, a private network, or a
+local-only bind. Set `MCP_TOKEN` to require a bearer token instead:
+
+```bash
+MCP_TOKEN=$(openssl rand -hex 32)
+```
+
+With it set, every request to `/mcp` must carry
+`Authorization: Bearer $MCP_TOKEN`; without it, behaviour is unchanged.
+
+`MCP_TOKEN` is deliberately **separate from `API_KEY`**. `API_KEY` guards the
+REST surface, and making it an MCP requirement too would silently break any
+already-working connector that relies on an edge gate rather than a header.
+
+This is a single shared secret, which suits the single-user deployment this
+server is built for. **It identifies nobody.** Do not hand one token to several
+people and treat it as per-user access — a multi-tenant deployment needs real
+per-user identity (OAuth 2.1 with authorization code + PKCE, as the MCP
+specification describes), not a shared token.
+
+### Client examples
+
+Every non-browser client authenticates with a bearer header, which is what
+`MCP_TOKEN` exists for.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http things https://your-host/mcp \
+  --header "Authorization: Bearer $THINGS_MCP_TOKEN"
+```
+
+Or in `.mcp.json`, so the token stays out of git:
+
+```json
+{ "mcpServers": { "things": { "type": "http", "url": "https://your-host/mcp",
+    "headers": { "Authorization": "Bearer ${THINGS_MCP_TOKEN}" } } } }
+```
+
+**Codex, Cursor, VS Code (Copilot), Windsurf** — all support a remote HTTP MCP
+server with a bearer token read from an environment variable. Codex uses a
+`bearer_token_env_var` setting; the others take a `headers` map with `${env:…}`
+interpolation. Check your client's current docs for the exact key, as these
+have been changing.
+
+**Hosted connectors** (Claude.ai, ChatGPT, Gemini Enterprise) call from the
+vendor's cloud, so the URL must be reachable from the public internet. They
+generally expect the MCP OAuth flow rather than a static header; this server is
+not an OAuth authorization server, so pair it with an identity-aware proxy and
+leave `MCP_TOKEN` unset.
+
+**Running it locally** sidesteps all of the above: start the server on
+`127.0.0.1` and point your client at `http://localhost:8080/mcp`. Your Things
+credentials never leave the machine, which is the lowest-risk way to use this.
+
+### One server, several clients
+
+Pointing several clients at a single instance is fine — writes and syncs are
+serialised internally. Do **not** run two server processes against the same
+`things.db`: that is cross-process SQLite contention and you will get
+`SQLITE_BUSY`. Separate instances need separate database files.
 
 ## Operational Notes
 

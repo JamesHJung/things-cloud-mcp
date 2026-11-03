@@ -114,6 +114,7 @@ See `docs/client-side-bugs.md` for the full investigation.
 The example app and real usage require:
 - `THINGS_USERNAME` — Things account email
 - `THINGS_PASSWORD` — Things account password
-- `API_KEY` — Bearer token for `/api/*` endpoints (optional, no auth if unset)
+- `API_KEY` — Bearer token for `/api/*` endpoints (optional, no auth if unset). Does **not** gate `/mcp`.
+- `MCP_TOKEN` — Bearer token required on `/mcp` (optional, no auth if unset). Deliberately separate from `API_KEY` so enabling REST auth cannot break a connector that authenticates at the network edge. See `server/mcpauth.go`.
 - `PORT` — Server port (default: `8080`)
 - `DEBUG` — Enable verbose HTTP request/response logging when `true`

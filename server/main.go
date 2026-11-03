@@ -277,28 +277,13 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+apiKey {
+		presented, ok := bearerToken(r)
+		if !ok || !tokenMatches(presented, apiKey) {
 			jsonError(w, "unauthorized", 401)
 			return
 		}
 		next(w, r)
 	}
-}
-
-func authHandlerMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey := os.Getenv("API_KEY")
-		if apiKey == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer "+apiKey {
-			jsonError(w, "unauthorized", 401)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func debugAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -557,7 +542,8 @@ func main() {
 	}))
 
 	// MCP endpoint (no bearer auth — claude.ai connectors use OAuth which we don't implement)
-	http.Handle("/mcp", newMCPHandler())
+	// MCP_TOKEN is opt-in; unset leaves /mcp unauthenticated as before.
+	http.Handle("/mcp", mcpAuthMiddleware(newMCPHandler()))
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

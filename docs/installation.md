@@ -123,7 +123,19 @@ Once connected, Claude has access to 36 tools:
 
 ## Privacy and credentials
 
-The server needs your Things Cloud email and password to sync your tasks. Since you're deploying this on your own Fly.io account, your credentials are stored as encrypted secrets on infrastructure you control — they're not shared with anyone. The MCP endpoint itself has no authentication, so consider that anyone with your server URL could access your tasks. If that's a concern, you can set an `API_KEY` and restrict access to the REST API.
+The server needs your Things Cloud email and password to sync your tasks. Since you're deploying this on your own Fly.io account, your credentials are stored as encrypted secrets on infrastructure you control — they're not shared with anyone.
+
+**Protect the MCP endpoint.** `/mcp` has no authentication unless you give it some, so by default anyone who learns your server URL can read and write your tasks. Set `MCP_TOKEN` to require `Authorization: Bearer <token>`:
+
+```bash
+fly secrets set MCP_TOKEN="$(openssl rand -hex 32)"
+```
+
+`API_KEY` does **not** cover `/mcp` — it only guards the REST surface. The two are separate on purpose, so that turning one on cannot silently break a working connector that authenticates at the network edge instead of with a header.
+
+Note that a shared token identifies nobody. It is right for a single-user deployment; it is not a way to give several people their own access.
+
+One more consideration: your Things Cloud password is sent on every API call — the protocol has no tokens or scopes — and the same credential can change your password or delete your account. Treat it accordingly, and see "Test with a separate account" in the README before pointing this at your main one.
 
 ## Cost
 
@@ -135,7 +147,8 @@ Fly.io doesn't bill you if your monthly usage is under $5. The server scales to 
 |----------|----------|-------------|
 | `THINGS_USERNAME` | Yes | Your Things account email |
 | `THINGS_PASSWORD` | Yes | Your Things account password |
-| `API_KEY` | No | Bearer token for REST API endpoints (`/api/*`). If unset, no auth required. |
+| `API_KEY` | No | Bearer token for REST API endpoints (`/api/*`). If unset, no auth required. Does not affect `/mcp`. |
+| `MCP_TOKEN` | No | Bearer token required on `/mcp`. If unset, the MCP endpoint is unauthenticated. |
 | `PORT` | No | Server port (default: `8080`) |
 | `DEBUG` | No | Set to `true` for verbose HTTP logging |
 
