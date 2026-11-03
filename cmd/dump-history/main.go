@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func main() {

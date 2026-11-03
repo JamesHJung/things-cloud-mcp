@@ -3,7 +3,7 @@ package sync
 import (
 	"strings"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // entityFamily is the schema-version-independent classification of an

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // Note: database/sql types are used via the dbExecutor interface defined in sync.go

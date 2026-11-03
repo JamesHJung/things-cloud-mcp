@@ -4,21 +4,22 @@ A Go server and SDK for the [Things 3](https://culturedcode.com/things/) cloud A
 
 Built on a reverse-engineered, unofficial SDK — there is no official API documentation from Cultured Code.
 
-> **This is a maintained fork.** The upstream repository
-> [`mattydsmith/things-cloud-mcp`](https://github.com/mattydsmith/things-cloud-mcp)
-> was archived in March 2026 and no longer accepts pull requests, leaving two
-> open fixes permanently unmergeable. This fork carries on from there: it fixes
-> the sync layer's handling of deletions, container cascades and partial
-> updates (see
+> **Where this came from.** This started as a copy of
+> [`mattydsmith/things-cloud-mcp`](https://github.com/mattydsmith/things-cloud-mcp),
+> which was archived in March 2026 — it accepts no pull requests, and two
+> submitted fixes are stranded there permanently. It has since diverged enough
+> to stand on its own: the sync layer's handling of deletions, container
+> cascades and partial updates is fixed (see
 > [Sync correctness](#sync-correctness-deletions-cascades-and-the-task7-bucket)),
-> adds a repair command for existing databases, and adds optional bearer
-> authentication so non-browser MCP clients can connect. Issues and pull
-> requests are welcome here.
+> the Today view no longer breaks outside UTC, there is a repair command for
+> existing databases, and `/mcp` can require a bearer token so non-browser MCP
+> clients can connect. It is maintained — issues and pull requests welcome.
 >
-> The sync engine originates in
+> The sync engine is tracked against
 > [`arthursoares/things-cloud-sdk`](https://github.com/arthursoares/things-cloud-sdk),
-> which is actively maintained and is the better home for SDK-level fixes; the
-> MCP server layer is what this repository adds on top.
+> which is still active; see
+> [Staying in sync with the upstream SDK](#staying-in-sync-with-the-upstream-sdk).
+> Full lineage and licensing in [Credits](#credits).
 
 ## What it does
 
@@ -33,7 +34,7 @@ The server performs an initial sync at startup and now exits if it cannot establ
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
 │  Things App  │────▶│  Things Cloud    │◀────│  API Server  │
-│  (Mac/iOS)   │     │  (Cultured Code) │     │  (Fly.io)    │
+│  (Mac/iOS)   │     │  (Cultured Code) │     │ (self-hosted)│
 └──────────────┘     └──────────────────┘     └──────┬───────┘
                                                      │
                                               ┌──────┴───────┐
@@ -429,14 +430,25 @@ worse bug than the one it fixed. See
 
 See **[docs/installation.md](docs/installation.md)** for full setup instructions. The short version:
 
-1. Clone the repo and deploy to Fly.io
-2. Set your Things Cloud credentials as Fly secrets
-3. Add the MCP URL as a custom connector in Claude.ai
-4. Create a Skill file for your workflow
+1. Clone the repo
+2. Set `THINGS_USERNAME` and `THINGS_PASSWORD`, and mount a writable `/data`
+3. Run it — locally with `go run ./server/`, or as a container on a NAS or VM
+4. Point your MCP client at `/mcp` (see [Connecting MCP clients](#connecting-mcp-clients))
 
-### Privacy and cost
+It is a single static binary with an embedded SQLite database, so it runs
+anywhere with a writable directory. There is nothing to provision and no
+managed service involved.
 
-Your credentials are stored as encrypted secrets on your own Fly.io account — you're not giving them to anyone. Fly.io doesn't bill you if your monthly usage is under $5. After 2+ months of active development and daily use, the author has not been billed.
+### Privacy
+
+You run this yourself, so your Things credentials stay on hardware you control.
+Keep them in environment variables or an uncommitted `.env`, never in a compose
+file.
+
+Worth knowing what that credential is: Things Cloud has no tokens or scopes, so
+the SDK sends your **account password** on every request, and the same
+credential can change your password or delete your account. Running locally,
+where it never leaves your machine, is the lowest-risk option.
 
 ### Test with a separate account
 
@@ -507,4 +519,19 @@ go test -v ./...
 
 ## Credits
 
-Built on top of [arthursoares/things-cloud-sdk](https://github.com/arthursoares/things-cloud-sdk), which reverse-engineered the Things Cloud sync protocol.
+Four layers of other people's work sit under this, each copied forward rather
+than forked, which is why none of the histories connect:
+
+| | |
+|---|---|
+| [**nicolai86/things-cloud-sdk**](https://github.com/nicolai86/things-cloud-sdk) | Raphael Randschau, 2017. Reverse-engineered the Things Cloud sync protocol and wrote the original Go SDK. The `LICENSE` in this repository is his. |
+| [**arthursoares/things-cloud-sdk**](https://github.com/arthursoares/things-cloud-sdk) | Carried the SDK forward and added the persistent SQLite sync engine. Still actively maintained. |
+| [**mattydsmith/things-cloud-mcp**](https://github.com/mattydsmith/things-cloud-mcp) | Added the MCP server and REST layer on top of the SDK. Archived March 2026. |
+| **this repository** | Sync correctness fixes, the database repair command, MCP authentication, and ongoing maintenance. |
+
+Licensed MIT throughout. The original copyright notice is preserved in
+[`LICENSE`](LICENSE) as that licence requires.
+
+Things 3 and Things Cloud are products of [Cultured Code](https://culturedcode.com/).
+This project is unofficial, unaffiliated, and built on a reverse-engineered API
+with no vendor support or guarantees.

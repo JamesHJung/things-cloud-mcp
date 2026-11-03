@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	thingscloud "github.com/arthursoares/things-cloud-sdk"
+	thingscloud "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func TestIsConflictError(t *testing.T) {

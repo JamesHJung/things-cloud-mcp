@@ -5,9 +5,12 @@ Self-host the Things Cloud MCP server to connect Claude (or any MCP-compatible A
 ## Prerequisites
 
 - A [Things 3](https://culturedcode.com/things/) account with Things Cloud sync enabled
-- [Go 1.24+](https://go.dev/dl/) (for building from source)
-- [Fly.io CLI](https://fly.io/docs/flyctl/install/) (`brew install flyctl`)
-- A free [Fly.io account](https://fly.io)
+- Either [Go 1.24+](https://go.dev/dl/) to build and run directly, or Docker to
+  run the container
+
+The server is a single static binary with an embedded SQLite database, so it
+runs anywhere: a NAS, a small VM, or just your own machine. There is nothing
+to provision beyond a writable directory for the database.
 
 ## 1. Clone the repository
 
@@ -39,49 +42,105 @@ curl http://localhost:8080/
 # {"service":"things-cloud-api","status":"ok"}
 ```
 
-## 3. Deploy to Fly.io
+## 3. Run it
 
-### Create the app
+Pick whichever fits. All three want the same three things: your credentials in
+the environment, a writable path for the database, and port 8080 reachable by
+your MCP client.
+
+### Locally
+
+The lowest-risk option, and the one to prefer if you only use this yourself:
+your Things credentials never leave your machine.
 
 ```bash
-fly launch
+export THINGS_USERNAME='your-things-email'
+export THINGS_PASSWORD='your-things-password'
+sudo mkdir -p /data && sudo chown "$USER" /data
+go run ./server/
 ```
 
-When prompted, choose a region close to you. The included `fly.toml` configures a shared CPU VM with 1 GB RAM and a persistent volume for the SQLite database.
+Point your client at `http://localhost:8080/mcp`.
 
-### Set your credentials
+### Docker
 
 ```bash
-fly secrets set THINGS_USERNAME='your-things-email' THINGS_PASSWORD='your-things-password'
+docker build -t things-cloud-mcp .
+docker run -d --name things-mcp \
+  -e THINGS_USERNAME='your-things-email' \
+  -e THINGS_PASSWORD='your-things-password' \
+  -e MCP_TOKEN="$(openssl rand -hex 32)" \
+  -v /srv/things-mcp/data:/data \
+  -p 127.0.0.1:8080:8080 \
+  things-cloud-mcp
 ```
 
-Optionally set an API key for the REST endpoints:
+The image is ~14 MB and also ships `things-rebuild`, the one-off database
+repair tool (`docker exec things-mcp things-rebuild -diagnose`).
 
-```bash
-fly secrets set API_KEY='your-chosen-api-key'
+Binding to `127.0.0.1` keeps it off the network. Publish it more widely only
+behind something that authenticates — see **Exposing it** below.
+
+### Docker Compose (NAS, VM)
+
+```yaml
+services:
+  things-mcp:
+    build:
+      context: https://github.com/JamesHJung/things-cloud-mcp.git#main
+    container_name: things-mcp
+    restart: unless-stopped
+    environment:
+      THINGS_USERNAME: ${THINGS_USERNAME}
+      THINGS_PASSWORD: ${THINGS_PASSWORD}
+      MCP_TOKEN: ${MCP_TOKEN}      # bearer token for /mcp; see Environment variables
+      PORT: "8080"
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s   # the initial sync must finish or the process exits
 ```
 
-### Deploy
+Put the secrets in a `.env` beside it. On Synology Container Manager, note that
+**Clean —> Build does not reliably replace a running container** — delete the
+project and recreate it when you need a new image to actually take effect.
+
+### Verify
 
 ```bash
-fly deploy
-```
-
-The first deploy creates the persistent volume automatically. The container image is ~14 MB.
-
-### Verify the deployment
-
-```bash
-curl https://your-app-name.fly.dev/
+curl http://localhost:8080/
 # {"service":"things-cloud-api","status":"ok"}
 ```
+
+Startup is fail-fast: the process exits if the initial sync fails, so if it is
+running, it synced. A first sync of a few thousand history items takes a few
+seconds.
+
+### Exposing it
+
+`/mcp` is unauthenticated unless you set `MCP_TOKEN`. Before reaching it from
+anywhere but localhost, do one of:
+
+- set `MCP_TOKEN` and have the client send `Authorization: Bearer <token>`, or
+- put it behind an identity-aware proxy (Cloudflare Tunnel + Access, Tailscale,
+  a VPN), or
+- keep it bound to `127.0.0.1` and run your client on the same host.
+
+Hosted connectors such as Claude.ai call from the vendor's cloud, so they need
+a publicly reachable URL — pair that with a proxy that authenticates.
 
 ## 4. Connect to Claude
 
 ### Claude.ai (web)
 
 1. Go to **Settings > Connectors > Add custom connector**
-2. Set the URL to `https://your-app-name.fly.dev/mcp`
+2. Set the URL to `https://your-host/mcp`
 3. Leave authentication fields empty (the MCP endpoint has no auth)
 4. Save
 
@@ -96,7 +155,7 @@ Add the server to your Claude Code MCP config (`~/.claude/mcp.json` or project-l
   "mcpServers": {
     "things": {
       "type": "url",
-      "url": "https://your-app-name.fly.dev/mcp"
+      "url": "https://your-host/mcp"
     }
   }
 }
@@ -116,19 +175,19 @@ Once connected, Claude has access to 36 tools:
 
 ## Infrastructure notes
 
-- The server scales to zero when idle and auto-starts on the first request (cold start takes a few seconds)
-- SQLite with WAL mode is stored on a persistent Fly.io volume at `/data`
+- The database is a *cache* of Things Cloud, not a source of truth. Deleting it and restarting rebuilds it from history in a few seconds
+- SQLite with WAL mode lives at `/data/things.db`; mount that path to persist it
 - The server syncs incrementally from Things Cloud before every read, so changes made in the Things app are immediately visible
 - Writes use event-sourced sync with automatic retry on 409 conflicts (race with the Things app)
 
 ## Privacy and credentials
 
-The server needs your Things Cloud email and password to sync your tasks. Since you're deploying this on your own Fly.io account, your credentials are stored as encrypted secrets on infrastructure you control — they're not shared with anyone.
+The server needs your Things Cloud email and password to sync your tasks. You run it on your own hardware, so those credentials stay on infrastructure you control and are not shared with anyone — keep them in environment variables or a `.env` that is not committed, never in the compose file itself.
 
 **Protect the MCP endpoint.** `/mcp` has no authentication unless you give it some, so by default anyone who learns your server URL can read and write your tasks. Set `MCP_TOKEN` to require `Authorization: Bearer <token>`:
 
 ```bash
-fly secrets set MCP_TOKEN="$(openssl rand -hex 32)"
+MCP_TOKEN="$(openssl rand -hex 32)"
 ```
 
 `API_KEY` does **not** cover `/mcp` — it only guards the REST surface. The two are separate on purpose, so that turning one on cannot silently break a working connector that authenticates at the network edge instead of with a header.
@@ -137,9 +196,11 @@ Note that a shared token identifies nobody. It is right for a single-user deploy
 
 One more consideration: your Things Cloud password is sent on every API call — the protocol has no tokens or scopes — and the same credential can change your password or delete your account. Treat it accordingly, and see "Test with a separate account" in the README before pointing this at your main one.
 
-## Cost
+## Resource use
 
-Fly.io doesn't bill you if your monthly usage is under $5. The server scales to zero when idle and uses minimal resources when running (shared CPU, 1 GB RAM). After 2+ months of active development and daily use, the author has not been billed.
+Shared CPU and a few hundred MB of RAM are plenty; the binary is ~14 MB and a
+database of several thousand tasks is a couple of MB. It is idle except while
+serving a request.
 
 ## Environment variables
 
@@ -156,13 +217,17 @@ Fly.io doesn't bill you if your monthly usage is under $5. The server scales to 
 
 ```bash
 git pull
-fly deploy
+# then rebuild and restart however you run it, e.g.
+docker compose up -d --build
 ```
 
 ## Troubleshooting
 
-**Server won't start:** Check your credentials with `fly logs`. The most common issue is incorrect Things Cloud credentials.
+**Server won't start:** Check the logs (`docker logs things-mcp`). Startup is fail-fast, and incorrect Things Cloud credentials are the usual cause.
 
-**Sync errors:** The server retries sync automatically. If issues persist, check `fly logs` for details. You can trigger a manual sync via `curl https://your-app-name.fly.dev/api/sync` (requires `API_KEY` if set).
+**Sync errors:** The server retries automatically. Check the logs, and trigger a manual sync with `curl http://localhost:8080/api/sync` (requires `API_KEY` if set).
 
-**Cold start latency:** The first request after idle may take a few seconds as Fly.io starts the machine and the server performs an initial sync. Subsequent requests are fast.
+**Stale or wrong local state:** `things-rebuild` replays the change log to rebuild
+the materialised tables, with no network access or credentials needed:
+`docker exec things-mcp things-rebuild -diagnose` to look, without `-diagnose`
+to repair.

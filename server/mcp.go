@@ -11,8 +11,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	things "github.com/arthursoares/things-cloud-sdk"
-	"github.com/arthursoares/things-cloud-sdk/sync"
+	things "github.com/JamesHJung/things-cloud-mcp"
+	"github.com/JamesHJung/things-cloud-mcp/sync"
 )
 
 // ---------------------------------------------------------------------------

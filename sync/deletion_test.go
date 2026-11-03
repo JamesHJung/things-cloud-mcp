@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // ---------------------------------------------------------------------------

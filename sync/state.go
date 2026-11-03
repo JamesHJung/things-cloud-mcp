@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // State provides read-only access to the synced Things state

@@ -8,7 +8,7 @@ import (
 	gosync "sync"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 	_ "modernc.org/sqlite"
 )
 

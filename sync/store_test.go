@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func TestTaskStorage(t *testing.T) {

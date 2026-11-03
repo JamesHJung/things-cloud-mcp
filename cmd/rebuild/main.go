@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/arthursoares/things-cloud-sdk/sync"
+	"github.com/JamesHJung/things-cloud-mcp/sync"
 )
 
 // containerDBPath is where server/main.go opens its database inside the

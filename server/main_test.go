@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arthursoares/things-cloud-sdk/sync"
+	"github.com/JamesHJung/things-cloud-mcp/sync"
 )
 
 type stubInitialSyncer struct {

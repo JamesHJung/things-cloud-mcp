@@ -27,8 +27,6 @@
 *.har
 docs/blog-post.md
 
-# Fly.io config is deployment-specific and should not be committed
-fly.toml
 
 # Local Codex/Claude state
 .claude/

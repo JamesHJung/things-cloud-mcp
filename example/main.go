@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	thingscloud "github.com/arthursoares/things-cloud-sdk"
-	memory "github.com/arthursoares/things-cloud-sdk/state/memory"
+	thingscloud "github.com/JamesHJung/things-cloud-mcp"
+	memory "github.com/JamesHJung/things-cloud-mcp/state/memory"
 )
 
 // base58Encode encodes a UUID as a Base58 string using the Bitcoin alphabet.

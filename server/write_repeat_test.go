@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func decodeRepeatConfig(t *testing.T, raw *json.RawMessage) map[string]any {

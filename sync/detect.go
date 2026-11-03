@@ -3,7 +3,7 @@ package sync
 import (
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // detectTaskChanges compares old and new task state and returns semantic changes

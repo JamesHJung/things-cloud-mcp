@@ -5,7 +5,7 @@ import (
 	// "fmt"
 	"sort"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // State is created by applying all history items in order.

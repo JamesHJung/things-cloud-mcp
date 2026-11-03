@@ -12,7 +12,7 @@ import (
 	gosync "sync"
 	"time"
 
-	thingscloud "github.com/arthursoares/things-cloud-sdk"
+	thingscloud "github.com/JamesHJung/things-cloud-mcp"
 	"github.com/google/uuid"
 )
 

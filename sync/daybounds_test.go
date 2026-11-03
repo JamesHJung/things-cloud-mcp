@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	things "github.com/arthursoares/things-cloud-sdk"
+	things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 // Things stores scheduled_date / today_index_ref / deadline_date as date-only

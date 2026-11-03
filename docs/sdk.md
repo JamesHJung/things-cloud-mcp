@@ -2,14 +2,14 @@
 
 Go SDK for the Things 3 cloud API. This is a reverse-engineered, unofficial SDK — there is no official API documentation from Cultured Code.
 
-[![Go](https://github.com/arthursoares/things-cloud-sdk/actions/workflows/go.yml/badge.svg)](https://github.com/arthursoares/things-cloud-sdk/actions/workflows/go.yml)
+[![Go](https://github.com/JamesHJung/things-cloud-mcp/actions/workflows/go.yml/badge.svg)](https://github.com/JamesHJung/things-cloud-mcp/actions/workflows/go.yml)
 
 ## Getting Started
 
 ### Installation
 
 ```bash
-go get github.com/arthursoares/things-cloud-sdk
+go get github.com/JamesHJung/things-cloud-mcp
 ```
 
 ### Quick Start
@@ -29,7 +29,7 @@ package main
 import (
     "fmt"
     "os"
-    things "github.com/arthursoares/things-cloud-sdk"
+    things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func main() {
@@ -162,7 +162,7 @@ package main
 import (
     "fmt"
     "os"
-    things "github.com/arthursoares/things-cloud-sdk"
+    things "github.com/JamesHJung/things-cloud-mcp"
 )
 
 func main() {
@@ -222,8 +222,8 @@ package main
 import (
     "fmt"
     "os"
-    things "github.com/arthursoares/things-cloud-sdk"
-    "github.com/arthursoares/things-cloud-sdk/sync"
+    things "github.com/JamesHJung/things-cloud-mcp"
+    "github.com/JamesHJung/things-cloud-mcp/sync"
 )
 
 func main() {
