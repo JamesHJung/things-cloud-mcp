@@ -354,14 +354,14 @@ func hasArea(task *things.Task, state *State) bool {
 	return false
 }
 
-// TasksWithoutArea looks up top level tasks not assigned to any area, e.g. just created and placed in today
+// TasksWithoutArea looks up tasks not assigned to any area, directly or
+// through their parent chain — a task in a project that lives in an area
+// inherits that area, which hasArea already resolves. Skipping anything with a
+// parent made this miss every unfiled task that happened to sit in a project.
 func (s *State) TasksWithoutArea() []*things.Task {
 	tasks := []*things.Task{}
 	for _, task := range s.Tasks {
 		if task.Status == things.TaskStatusCompleted {
-			continue
-		}
-		if len(task.ParentTaskIDs) != 0 {
 			continue
 		}
 		if task.InTrash {

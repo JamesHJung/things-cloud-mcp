@@ -137,6 +137,7 @@ func (s *AccountService) ChangePassword(newPassword string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Authorization", fmt.Sprintf("Password %s", s.client.password))
 	resp, err := s.client.do(req)
 	if err != nil {
 		return nil, err

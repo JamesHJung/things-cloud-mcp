@@ -2,6 +2,7 @@ package thingscloud
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -68,5 +69,36 @@ func TestNote_ApplyMultiplePatches(t *testing.T) {
 	result := ApplyPatches(original, patches)
 	if result != "XBCDEF" {
 		t.Errorf("expected 'XBCDEF', got '%s'", result)
+	}
+}
+
+// A negative patch Length makes end < Position, and runes[end:] panics once
+// end drops below zero. Patches arrive from Things Cloud, so a malformed one
+// must not take the sync down.
+func TestApplyPatchesSurvivesNegativeLength(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		original string
+		patch    NotePatch
+	}{
+		{"negative length at start", "hello world", NotePatch{Position: 0, Length: -5, Replacement: "X"}},
+		{"negative length mid-string", "hello world", NotePatch{Position: 6, Length: -3, Replacement: "Y"}},
+		{"negative length and negative position", "hello", NotePatch{Position: -2, Length: -9, Replacement: "Z"}},
+		{"hugely negative length", "hello", NotePatch{Position: 3, Length: -1 << 20, Replacement: "Q"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The assertion is that this returns at all.
+			got := ApplyPatches(tc.original, []NotePatch{tc.patch})
+			if got == "" && tc.original != "" {
+				t.Errorf("ApplyPatches ate the note: %q -> %q", tc.original, got)
+			}
+			if !strings.Contains(got, tc.patch.Replacement) {
+				t.Errorf("replacement %q missing from %q", tc.patch.Replacement, got)
+			}
+		})
 	}
 }

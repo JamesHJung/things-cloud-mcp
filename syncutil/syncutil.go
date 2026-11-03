@@ -70,8 +70,22 @@ type DailySummary struct {
 }
 
 // BuildDailySummary calculates activity stats from today's changes.
+// startOfLocalDay returns midnight of now's own day, in now's location.
+//
+// time.Truncate(24*time.Hour) does not do this: it truncates relative to the
+// zero time in UTC, so it yields midnight UTC. At UTC-8 that is 16:00 local,
+// so "today's activity" began mid-afternoon and most of the day was missing.
+//
+// Local midnight is right *here* because ChangesSince compares against
+// synced_at, a real timestamp. It would be wrong for the scheduled_date
+// columns, which hold date-only values encoded at midnight UTC — see
+// currentUTCDayBounds in the sync package.
+func startOfLocalDay(now time.Time) time.Time {
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
 func BuildDailySummary(syncer *sync.Syncer) DailySummary {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := startOfLocalDay(time.Now())
 	changes, _ := syncer.ChangesSince(today)
 
 	summary := DailySummary{}

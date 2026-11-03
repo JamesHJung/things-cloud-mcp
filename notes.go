@@ -37,6 +37,11 @@ func ApplyPatches(original string, patches []NotePatch) string {
 		if end > len(runes) {
 			end = len(runes)
 		}
+		if end < p.Position {
+			// A negative Length would make end < Position, and runes[end:]
+			// panics once end goes below zero. Treat it as a pure insertion.
+			end = p.Position
+		}
 		actualLength := end - p.Position
 		replacementRunes := []rune(p.Replacement)
 		newCap := len(runes) - actualLength + len(replacementRunes)
