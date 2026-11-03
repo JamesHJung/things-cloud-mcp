@@ -132,7 +132,10 @@ func detectTaskChanges(old, new *things.Task, serverIndex int, ts time.Time) []C
 
 // taskLocation determines where a task lives based on schedule and dates
 func taskLocation(t *things.Task) TaskLocation {
-	return taskLocationAt(t, time.Now().UTC())
+	// time.Now(), not time.Now().UTC(): the stored dates are date-only values
+	// whose UTC calendar date is the intended *local* day, so they must be
+	// compared against the local date. See currentUTCDayBounds in state.go.
+	return taskLocationAt(t, time.Now())
 }
 
 func taskLocationAt(t *things.Task, now time.Time) TaskLocation {
@@ -157,16 +160,21 @@ func taskLocationAt(t *things.Task, now time.Time) TaskLocation {
 }
 
 func isToday(t *time.Time) bool {
-	return isTodayAt(t, time.Now().UTC())
+	return isTodayAt(t, time.Now())
 }
 
+// isTodayAt reports whether a date-only value falls on now's calendar day.
+//
+// The stored value is midnight UTC of the intended day, so its UTC calendar
+// date is compared against now's *local* calendar date. Taking now.UTC() here
+// instead makes every task stop counting as "today" once local time passes UTC
+// midnight — 16:00 onwards at UTC-8.
 func isTodayAt(t *time.Time, now time.Time) bool {
 	if t == nil {
 		return false
 	}
-	nowUTC := now.UTC()
-	targetUTC := t.UTC()
-	return targetUTC.Year() == nowUTC.Year() && targetUTC.YearDay() == nowUTC.YearDay()
+	target := t.UTC()
+	return target.Year() == now.Year() && target.YearDay() == now.YearDay()
 }
 
 func isFutureAt(t *time.Time, now time.Time) bool {

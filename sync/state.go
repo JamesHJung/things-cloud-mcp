@@ -372,9 +372,33 @@ func (st *State) ChecklistItems(taskUUID string) ([]*things.CheckListItem, error
 
 // Helper methods
 
+// currentUTCDayBounds returns the [start, end) range matching "today" for the
+// scheduled_date / today_index_ref columns.
+//
+// Things stores those as *date-only* values, encoded as midnight UTC of the
+// intended calendar day — every such value in a real database is an exact
+// multiple of 86400. So the boundary has to be built from the **local**
+// calendar date (the day the user means) but expressed at **UTC** midnight
+// (how Things encodes it).
+//
+// Getting either half wrong shifts the window:
+//
+//   - using the UTC calendar date puts the window a day ahead for every local
+//     hour after UTC midnight — 8 hours a day at UTC-8, during which Today
+//     silently returns tomorrow's tasks;
+//   - building local midnight in the *local* zone (time.Date(..., time.Local))
+//     offsets the window by the zone offset, so it misses today's tasks and
+//     catches tomorrow's, all day.
+//
+// Both forms happen to be correct at UTC+0, which is why this is easy to miss.
 func currentUTCDayBounds() (int64, int64) {
-	nowUTC := time.Now().UTC()
-	today := time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 0, 0, 0, 0, time.UTC)
+	return dayBoundsAt(time.Now())
+}
+
+// dayBoundsAt is currentUTCDayBounds with an injectable clock, so the
+// behaviour can be tested across time zones and times of day.
+func dayBoundsAt(now time.Time) (int64, int64) {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	tomorrow := today.Add(24 * time.Hour)
 	return today.Unix(), tomorrow.Unix()
 }

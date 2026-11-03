@@ -286,7 +286,7 @@ func TestDetectTaskChanges(t *testing.T) {
 
 	t.Run("task moved to today", func(t *testing.T) {
 		t.Parallel()
-		today := time.Now()
+		today := dateOnly(time.Now())
 		old := &things.Task{UUID: "t1", Title: "Task", Schedule: things.TaskScheduleInbox}
 		new := &things.Task{UUID: "t1", Title: "Task", Schedule: things.TaskScheduleAnytime, ScheduledDate: &today}
 		changes := detectTaskChanges(old, new, 1, now)
@@ -305,7 +305,7 @@ func TestDetectTaskChanges(t *testing.T) {
 
 	t.Run("task moved to today via tir", func(t *testing.T) {
 		t.Parallel()
-		today := time.Now()
+		today := dateOnly(time.Now())
 		old := &things.Task{UUID: "t1", Title: "Task", Schedule: things.TaskScheduleInbox}
 		new := &things.Task{UUID: "t1", Title: "Task", Schedule: things.TaskScheduleAnytime, TodayIndexReference: &today}
 		changes := detectTaskChanges(old, new, 1, now)
@@ -1060,7 +1060,7 @@ func TestTaskLocation(t *testing.T) {
 
 	t.Run("anytime schedule with today date", func(t *testing.T) {
 		t.Parallel()
-		today := time.Now()
+		today := dateOnly(time.Now())
 		task := &things.Task{Schedule: things.TaskScheduleAnytime, ScheduledDate: &today}
 		loc := taskLocation(task)
 		if loc != LocationToday {
@@ -1070,7 +1070,7 @@ func TestTaskLocation(t *testing.T) {
 
 	t.Run("anytime schedule with today tir", func(t *testing.T) {
 		t.Parallel()
-		today := time.Now()
+		today := dateOnly(time.Now())
 		task := &things.Task{Schedule: things.TaskScheduleAnytime, TodayIndexReference: &today}
 		loc := taskLocation(task)
 		if loc != LocationToday {
@@ -1269,7 +1269,7 @@ func TestIsToday(t *testing.T) {
 
 	t.Run("today returns true", func(t *testing.T) {
 		t.Parallel()
-		now := time.Now()
+		now := dateOnly(time.Now())
 		if !isToday(&now) {
 			t.Error("expected today to return true")
 		}
@@ -1277,7 +1277,7 @@ func TestIsToday(t *testing.T) {
 
 	t.Run("yesterday returns false", func(t *testing.T) {
 		t.Parallel()
-		yesterday := time.Now().AddDate(0, 0, -1)
+		yesterday := daysFromToday(-1)
 		if isToday(&yesterday) {
 			t.Error("expected yesterday to return false")
 		}
@@ -1285,7 +1285,7 @@ func TestIsToday(t *testing.T) {
 
 	t.Run("tomorrow returns false", func(t *testing.T) {
 		t.Parallel()
-		tomorrow := time.Now().AddDate(0, 0, 1)
+		tomorrow := daysFromToday(1)
 		if isToday(&tomorrow) {
 			t.Error("expected tomorrow to return false")
 		}

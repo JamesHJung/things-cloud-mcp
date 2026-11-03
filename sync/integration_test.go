@@ -92,8 +92,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("process task with tir stores TodayIndexReference separately", func(t *testing.T) {
-		now := time.Now()
-		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		today := dateOnly(time.Now())
 		yesterday := today.Add(-24 * time.Hour)
 
 		payload := things.TaskActionItemPayload{}
@@ -224,9 +223,8 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 	}
 	defer syncer.Close()
 
-	nowUTC := time.Now().UTC()
-	today := time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 12, 0, 0, 0, time.UTC)
-	yesterday := today.Add(-24 * time.Hour)
+	today := dateOnly(time.Now())
+	yesterday := daysFromToday(-1)
 
 	syncer.saveTask(&things.Task{
 		UUID:          "sr-only",
@@ -580,9 +578,9 @@ func TestStateQueries(t *testing.T) {
 	// Create test data directly
 	completedAtRecent := time.Date(2026, 3, 5, 10, 30, 0, 0, time.UTC)
 	completedAtOlder := time.Date(2026, 3, 4, 8, 15, 0, 0, time.UTC)
-	todayRef := time.Now().UTC()
-	futureRef := time.Now().UTC().Add(48 * time.Hour)
-	pastRef := time.Now().UTC().Add(-48 * time.Hour)
+	todayRef := dateOnly(time.Now())
+	futureRef := daysFromToday(2)
+	pastRef := daysFromToday(-2)
 	syncer.saveTask(&things.Task{UUID: "inbox-1", Title: "Inbox Task", Schedule: things.TaskScheduleInbox, Status: things.TaskStatusPending})
 	syncer.saveTask(&things.Task{UUID: "anytime-1", Title: "Anytime Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending})
 	syncer.saveTask(&things.Task{UUID: "today-ref-1", Title: "Today via tir", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending, TodayIndexReference: &todayRef})
