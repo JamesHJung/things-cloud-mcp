@@ -21,7 +21,7 @@ func IsBase58UUID(id string) bool {
 }
 
 // IsHyphenatedUUID reports whether id is a canonical 8-4-4-4-12 hyphenated
-// UUID, e.g. "E1408FCA-A25C-4471-87F2-6F43B3E1D8DB".
+// UUID, e.g. "A1B2C3D4-E5F6-4789-8ABC-DEF012345678".
 //
 // Things Cloud still holds identifiers in this older form for items imported
 // around 2020, and continues to reference them in payloads, so they have to be

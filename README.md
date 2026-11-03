@@ -278,7 +278,7 @@ so a partially-applied migration no longer hard-fails on reopen.
 
 Write validation rejected anything that was not a Things Base58 UUID. Things
 Cloud still holds **uppercase hyphenated UUIDs** (8-4-4-4-12, e.g.
-`E1408FCA-A25C-4471-87F2-6F43B3E1D8DB`) for items imported around 2020, and the
+`A1B2C3D4-E5F6-4789-8ABC-DEF012345678`) for items imported around 2020, and the
 hyphens — along with characters Base58 excludes, such as `0`, `O` and `I` —
 failed the check. Those items were unaddressable through the MCP tools even
 though the server accepts operations on them. On the database this was developed

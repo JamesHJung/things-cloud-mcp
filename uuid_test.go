@@ -2,6 +2,8 @@ package thingscloud
 
 import "testing"
 
+// Fixtures are synthetic: these tests check the *shape* of an identifier, not
+// any particular item.
 func TestIsValidItemUUID(t *testing.T) {
 	t.Parallel()
 
@@ -11,27 +13,27 @@ func TestIsValidItemUUID(t *testing.T) {
 		want bool
 	}{
 		// Base58, as Things mints today.
-		{"base58", "6Z4vn1NNerkFftMQYLX6Rp", true},
-		{"base58 short bound", "ABCDEFGHJKLMNPQRSTU", false},
-		{"base58 min length", "ABCDEFGHJKLMNPQRSTUV", true},
+		{"base58", "3KpQ7mWnXbTd2vZyRf9Jah", true},
+		{"base58 below min length", "ABCDEFGHJKLMNPQRSTU", false},
+		{"base58 at min length", "ABCDEFGHJKLMNPQRSTUV", true},
+		{"base58 above max length", "3KpQ7mWnXbTd2vZyRf9Jah3KpQ7mWnXbT", false},
 
 		// Legacy hyphenated UUIDs. Things Cloud still holds these for items
 		// imported around 2020 and the MCP tools must be able to address them.
-		{"hyphenated uppercase", "E1408FCA-A25C-4471-87F2-6F43B3E1D8DB", true},
-		{"hyphenated uppercase 2", "3A551656-32D9-45FB-98CE-05D467ED873C", true},
-		// Contains 0 and O, which Base58 excludes.
-		{"hyphenated with base58-illegal chars", "0A34678C-D341-4495-A613-635DF953AA2B", true},
-		{"hyphenated lowercase", "34ea18ce-b88a-48ce-8bbc-bbeea3e22236", true},
-		{"hyphenated mixed case", "CA562271-71f4-4D1F-910b-FB2FA146B1A8", true},
+		{"hyphenated uppercase", "A1B2C3D4-E5F6-4789-8ABC-DEF012345678", true},
+		// Contains 0, which the Base58 alphabet excludes.
+		{"hyphenated with base58-illegal chars", "0123ABCD-4E5F-4A6B-8C7D-9E0F1A2B3C4D", true},
+		{"hyphenated lowercase", "a1b2c3d4-e5f6-4789-8abc-def012345678", true},
+		{"hyphenated mixed case", "A1b2C3d4-E5f6-4789-8aBc-DeF012345678", true},
 
 		// Malformed hyphenated forms stay invalid.
-		{"wrong group lengths", "E1408FC-A25C-4471-87F2-6F43B3E1D8DB", false},
-		{"too few groups", "E1408FCA-A25C-4471-6F43B3E1D8DB", false},
-		{"non-hex", "G1408FCA-A25C-4471-87F2-6F43B3E1D8DB", false},
-		{"no hyphens, hex-only, too long", "E1408FCAA25C447187F26F43B3E1D8DB2", false},
+		{"wrong group lengths", "A1B2C3D-E5F6-4789-8ABC-DEF012345678", false},
+		{"too few groups", "A1B2C3D4-E5F6-4789-DEF012345678", false},
+		{"too many groups", "A1B2C3D4-E5F6-4789-8ABC-DEF0-12345678", false},
+		{"non-hex digit", "G1B2C3D4-E5F6-4789-8ABC-DEF012345678", false},
 
 		{"empty", "", false},
-		{"spaces", "E1408FCA A25C 4471 87F2 6F43B3E1D8DB", false},
+		{"spaces instead of hyphens", "A1B2C3D4 E5F6 4789 8ABC DEF012345678", false},
 	}
 
 	for _, tc := range cases {
@@ -45,7 +47,14 @@ func TestIsValidItemUUID(t *testing.T) {
 
 func TestIsHyphenatedUUIDRejectsBase58(t *testing.T) {
 	t.Parallel()
-	if IsHyphenatedUUID("6Z4vn1NNerkFftMQYLX6Rp") {
+	if IsHyphenatedUUID("3KpQ7mWnXbTd2vZyRf9Jah") {
 		t.Error("a Base58 UUID must not match the hyphenated form")
+	}
+}
+
+func TestIsBase58UUIDRejectsHyphenated(t *testing.T) {
+	t.Parallel()
+	if IsBase58UUID("A1B2C3D4-E5F6-4789-8ABC-DEF012345678") {
+		t.Error("a hyphenated UUID must not match the Base58 form")
 	}
 }
