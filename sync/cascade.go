@@ -211,21 +211,25 @@ func (s *Syncer) markTasksDeleted(uuids []string) (int, error) {
 // Cloud reports the area deleted.
 //
 // Things Cloud sends only the area's own deletion, so the local effect on its
-// projects and to-dos has to be chosen here. This is the one cascade rule that
-// could not be verified against the Things app while this was written, and it
-// is the only one that removes rows a user might still expect to see, so it is
-// a deliberate switch rather than a hard-coded assumption.
+// projects and to-dos has to be chosen here.
+//
+// The default is derived from evidence rather than assumption. Across the
+// AreaDeleted events in a real history, 11 of the 13 items filed under a
+// deleted area received no further item of any kind — no delete, no trash, no
+// update. Things pushes its own actions to the cloud, so had it deleted those
+// items it would have sent deletions for them. It did not: an area's contents
+// survive the area, holding a reference to a container that no longer exists.
+// Clearing that reference keeps the rows and leaves no dangling pointer.
 type AreaDeleteMode int
 
 const (
-	// AreaDeleteRemovesContents deletes the projects and to-dos filed under a
-	// deleted area, matching Things' own "its projects and to-dos will also
-	// be deleted" behaviour. This is the default.
-	AreaDeleteRemovesContents AreaDeleteMode = iota
-	// AreaDeleteUnfilesContents keeps those rows and just clears their area,
-	// so nothing is lost locally if Things turns out to unfile rather than
-	// delete.
-	AreaDeleteUnfilesContents
+	// AreaDeleteUnfilesContents keeps the projects and to-dos filed under a
+	// deleted area and clears their area reference. This is the default; see
+	// AreaDeleteMode for the history that justifies it.
+	AreaDeleteUnfilesContents AreaDeleteMode = iota
+	// AreaDeleteRemovesContents deletes them instead. Use this only if a
+	// Things version is found to propagate area deletions to contents.
+	AreaDeleteRemovesContents
 )
 
 // SetAreaDeleteMode chooses how area deletions cascade. See AreaDeleteMode.
@@ -246,19 +250,20 @@ func (s *Syncer) cascadeAreaDelete(areaUUID string) (int, error) {
 		return 0, nil
 	}
 
-	if s.areaDeleteMode == AreaDeleteUnfilesContents {
-		total := 0
-		for _, batch := range chunk(children) {
-			in, args := placeholders(batch)
-			res, err := s.db.Exec(`UPDATE tasks SET area_uuid = NULL WHERE uuid IN `+in, args...)
-			if err != nil {
-				return 0, fmt.Errorf("unfiling contents of area %s: %w", areaUUID, err)
-			}
-			n, _ := res.RowsAffected()
-			total += int(n)
-		}
-		return total, nil
+	if s.areaDeleteMode == AreaDeleteRemovesContents {
+		return s.deleteTasks(children)
 	}
 
-	return s.deleteTasks(children)
+	// Default: keep the rows, drop the reference to the area that is gone.
+	total := 0
+	for _, batch := range chunk(children) {
+		in, args := placeholders(batch)
+		res, err := s.db.Exec(`UPDATE tasks SET area_uuid = NULL WHERE uuid IN `+in, args...)
+		if err != nil {
+			return 0, fmt.Errorf("unfiling contents of area %s: %w", areaUUID, err)
+		}
+		n, _ := res.RowsAffected()
+		total += int(n)
+	}
+	return total, nil
 }

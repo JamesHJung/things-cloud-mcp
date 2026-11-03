@@ -98,8 +98,8 @@ go run ./cmd/rebuild
 # Repair a specific database
 go run ./cmd/rebuild -db /path/to/sync.db
 
-# Keep the contents of deleted areas instead of deleting them
-go run ./cmd/rebuild -unfile-areas
+# Delete the contents of deleted areas instead of keeping them (non-default)
+go run ./cmd/rebuild -delete-area-contents
 ```
 
 `change_log` and `sync_state` are preserved, so the sync cursor survives and the

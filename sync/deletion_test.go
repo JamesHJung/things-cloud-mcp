@@ -367,7 +367,7 @@ func TestTaskDeletedCascadesToSubtasks(t *testing.T) {
 	}
 }
 
-func TestAreaDeletedCascadesToContents(t *testing.T) {
+func TestAreaDeletedUnfilesContentsByDefault(t *testing.T) {
 	t.Parallel()
 	s := newTestSyncer(t)
 
@@ -382,13 +382,24 @@ func TestAreaDeletedCascadesToContents(t *testing.T) {
 		t.Fatalf("expected AreaDeleted, got %v", changeTypes(changes))
 	}
 
+	// Things leaves an area's contents alone, so the rows survive and only
+	// the reference to the vanished area is cleared.
 	for _, uuid := range []string{"proj-1", "task-in-project", "task-in-area"} {
-		if r := taskRow(t, s, uuid); r.deleted != 1 {
-			t.Errorf("%s deleted = %d, want 1 (area was deleted)", uuid, r.deleted)
+		r := taskRow(t, s, uuid)
+		if !r.found || r.deleted != 0 {
+			t.Errorf("%s should survive an area delete, found=%v deleted=%d", uuid, r.found, r.deleted)
 		}
+	}
+	if n := countRow(t, s,
+		`SELECT COUNT(*) FROM tasks WHERE uuid IN ('proj-1','task-in-area') AND area_uuid IS NULL`); n != 2 {
+		t.Error("area reference should have been cleared on the area's direct children")
 	}
 	if r := taskRow(t, s, "task-elsewhere"); r.deleted != 0 {
 		t.Errorf("task in another area must survive, deleted = %d", r.deleted)
+	}
+	if n := countRow(t, s,
+		`SELECT COUNT(*) FROM tasks WHERE uuid = 'task-elsewhere' AND area_uuid = 'area-2'`); n != 1 {
+		t.Error("another area's reference must not be touched")
 	}
 }
 
@@ -424,23 +435,21 @@ func changeTypes(changes []Change) []string {
 	return out
 }
 
-func TestAreaDeleteUnfilesContentsMode(t *testing.T) {
+func TestAreaDeleteRemovesContentsMode(t *testing.T) {
 	t.Parallel()
 	s := newTestSyncer(t)
-	s.SetAreaDeleteMode(AreaDeleteUnfilesContents)
+	s.SetAreaDeleteMode(AreaDeleteRemovesContents)
 
 	process(t, s, 1, "area-1", things.ItemKindArea3, things.ItemActionCreated, `{"tt":"Area"}`)
-	seedTask(t, s, "task-1", things.TaskTypeTask, "", "", "area-1")
+	seedTask(t, s, "proj-1", things.TaskTypeProject, "", "", "area-1")
+	seedTask(t, s, "task-in-project", things.TaskTypeTask, "proj-1", "", "")
 
 	process(t, s, 2, "area-1", things.ItemKindArea3, things.ItemActionDeleted, `{}`)
 
-	r := taskRow(t, s, "task-1")
-	if !r.found || r.deleted != 0 {
-		t.Fatalf("task should survive in unfile mode, found=%v deleted=%d", r.found, r.deleted)
-	}
-	if n := countRow(t, s,
-		`SELECT COUNT(*) FROM tasks WHERE uuid = 'task-1' AND area_uuid IS NULL`); n != 1 {
-		t.Error("task's area should have been cleared")
+	for _, uuid := range []string{"proj-1", "task-in-project"} {
+		if r := taskRow(t, s, uuid); r.deleted != 1 {
+			t.Errorf("%s deleted = %d, want 1 in remove-contents mode", uuid, r.deleted)
+		}
 	}
 }
 
@@ -449,9 +458,9 @@ func TestAreaDeleteUnfilesContentsMode(t *testing.T) {
 func TestAreaDeleteModePropagatesToTransaction(t *testing.T) {
 	t.Parallel()
 	s := newTestSyncer(t)
-	s.SetAreaDeleteMode(AreaDeleteUnfilesContents)
+	s.SetAreaDeleteMode(AreaDeleteRemovesContents)
 
-	if got := s.withDB(s.rawDB).areaDeleteMode; got != AreaDeleteUnfilesContents {
+	if got := s.withDB(s.rawDB).areaDeleteMode; got != AreaDeleteRemovesContents {
 		t.Errorf("withDB lost areaDeleteMode: got %v", got)
 	}
 }

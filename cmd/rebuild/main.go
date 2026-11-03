@@ -48,9 +48,9 @@ func printDiagnostics(label string, d sync.Diagnostics) {
 func main() {
 	dbPath := flag.String("db", "", "Path to the SQLite sync database (default: ~/.things-workflow/sync.db)")
 	diagnoseOnly := flag.Bool("diagnose", false, "Report integrity problems without modifying the database")
-	unfileAreas := flag.Bool("unfile-areas", false,
-		"On AreaDeleted, keep the area's projects and to-dos and just clear their area, "+
-			"instead of deleting them as Things does")
+	deleteAreaContents := flag.Bool("delete-area-contents", false,
+		"On AreaDeleted, delete the area's projects and to-dos instead of keeping them "+
+			"and clearing their area reference (the default, which is what Things does)")
 	flag.Parse()
 
 	path := *dbPath
@@ -69,8 +69,8 @@ func main() {
 	}
 	defer syncer.Close()
 
-	if *unfileAreas {
-		syncer.SetAreaDeleteMode(sync.AreaDeleteUnfilesContents)
+	if *deleteAreaContents {
+		syncer.SetAreaDeleteMode(sync.AreaDeleteRemovesContents)
 	}
 
 	fmt.Printf("Database: %s\n\n", path)

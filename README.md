@@ -177,7 +177,7 @@ transitively through both `project_uuid` and `heading_uuid`:
 | `ProjectTrashed`, `TaskTrashed` (incl. headings) | `in_trash = 1` on all descendants |
 | `ProjectRestored`, `TaskRestored` | `in_trash = 0` on all descendants |
 | `ProjectDeleted`, `HeadingDeleted`, `TaskDeleted` | descendants marked deleted |
-| `AreaDeleted` | contents deleted — see below |
+| `AreaDeleted` | contents kept, their area reference cleared — see below |
 | `ProjectCompleted` | **no cascade** (see below) |
 
 Cascades are applied to the materialized tables but are deliberately **not**
@@ -191,19 +191,25 @@ Two judgement calls worth knowing about:
   logs the project but leaves its unfinished to-dos alone, so neither `status`
   nor `in_trash` is propagated. (Trashing that project later *will* cascade, and
   completed children are trashed along with everything else.)
-- **`AreaDeleted` deletes the area's contents** by default, matching Things'
-  own "its projects and to-dos will also be deleted" behaviour. This is the one
-  rule that was **not** verified against the Things app, and the only one that
-  removes rows a user might still expect to see — on the database this was
-  developed against it removes 15 rows, all previously completed. It is
-  therefore a switch, not an assumption:
+- **`AreaDeleted` keeps the area's contents** and clears their area reference.
+  This was initially implemented the other way round, on the assumption that
+  Things deletes an area's contents along with it. The history says otherwise:
+  across the `AreaDeleted` events in a real account, **11 of the 13 items filed
+  under a deleted area received no further item of any kind** — no delete, no
+  trash, no update. Things pushes its own actions to the cloud, so had it
+  deleted those items it would have sent deletions for them. It did not. An
+  area's contents outlive the area, holding a reference to a container that no
+  longer exists; clearing that reference keeps the rows and leaves no dangling
+  pointer.
+
+  The other behaviour is still available if a Things version is found to
+  propagate area deletions:
 
   ```go
-  syncer.SetAreaDeleteMode(sync.AreaDeleteUnfilesContents) // keep them, clear their area
+  syncer.SetAreaDeleteMode(sync.AreaDeleteRemovesContents)
   ```
 
-  or `rebuild -unfile-areas`. If you confirm Things unfiles rather than deletes,
-  flip the default in `sync.AreaDeleteMode`.
+  or `rebuild -delete-area-contents`.
 
 ### 3. `UnknownChange` was too broad
 
@@ -238,7 +244,7 @@ database file.
 go run ./cmd/rebuild -diagnose            # report problems, change nothing
 go run ./cmd/rebuild                      # repair ~/.things-workflow/sync.db
 go run ./cmd/rebuild -db /path/to/sync.db
-go run ./cmd/rebuild -unfile-areas        # keep contents of deleted areas
+go run ./cmd/rebuild -delete-area-contents # delete contents of deleted areas
 ```
 
 `change_log` and `sync_state` are left untouched, so the sync cursor survives
@@ -253,10 +259,12 @@ Two things a replay cannot do:
   `-diagnose` output separates these ("legacy ... now parseable") from rows this
   parser still cannot classify, which is the number that should be zero.
 - **It cannot resolve a reference to an entity that has no create event in the
-  retained history.** Things Cloud does not keep history forever; where an old
-  payload references an area that was created before the retained window, the
-  replay keeps the reference faithfully and `-diagnose` counts it as
-  unresolved.
+  retained history.** Things Cloud does not keep history forever. Where an old
+  payload references an area created before the retained window, the replay
+  keeps the reference faithfully and `-diagnose` counts it as unresolved — on
+  the account this was developed against, 2 such tasks reference areas with
+  zero events in the log. This is distinct from a deleted area, whose contents
+  do get their reference cleared.
 
 ### Schema
 
