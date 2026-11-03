@@ -282,6 +282,12 @@ Two things a replay cannot do:
 Column additions are idempotent (`ALTER TABLE` guarded by `pragma_table_info`),
 so a partially-applied migration no longer hard-fails on reopen.
 
+The migration is **backward compatible**: a v5 database still works under the
+pre-fix code, verified by running the previous `sync` package against a migrated
+database — open, every read query, and the write path all succeed with matching
+row counts. Older code sees `version >= 4` and skips migrating, and it selects
+explicit column lists, so the added columns are inert to it.
+
 ### UUID validation accepts legacy hyphenated IDs
 
 Write validation rejected anything that was not a Things Base58 UUID. Things

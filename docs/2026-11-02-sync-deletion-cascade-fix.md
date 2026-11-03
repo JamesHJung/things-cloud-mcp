@@ -272,6 +272,24 @@ Column additions are now **idempotent** (`ALTER TABLE` guarded by
 `pragma_table_info`), so a partially-applied migration no longer hard-fails on
 reopen. Migration 3 had the same latent hazard and was given the same treatment.
 
+**Backward compatibility was verified, not assumed.** The previous `sync`
+package was built against a migrated v5 database: `Open` (including its
+migration check), `AllTasks`, `AllProjects`, `TasksInToday`, `TasksInInbox`,
+`TasksInUpcoming`, `AllAreas`, `AllTags`, `CompletedTasks`, `ChangesSinceIndex`
+and the `processItems` write path all succeed, with row counts matching
+hand-written SQL. Older code sees `version >= 4` and skips migrating, and it
+selects explicit column lists, so the added columns are inert. A rollback
+therefore does not require restoring a backup.
+
+### Concurrency
+
+`rebuild` can be run against a database a live server is still using. The server
+has no background sync timer but calls `Sync()` before every read, and `Sync()`
+writes. Measured under a concurrent writer: the rebuild completes in ~0.5 s and
+85 of 88 competing writes fail with `SQLITE_BUSY` during its transaction, while
+`PRAGMA integrity_check` returns `ok`. The failure mode is a brief run of failed
+requests, not a damaged database. Stop the server first if that matters.
+
 ---
 
 ## 8. UUID validation accepts legacy hyphenated IDs
