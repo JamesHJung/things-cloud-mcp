@@ -13,3 +13,10 @@
 # forward and say what you concluded in the commit message.
 #
 # scripts/check-upstream-sdk.sh lists what is new since the marker.
+#
+# Reviewed up to the SHA above as of 2026-11-03. Eleven fixes were applied; the
+# rest did not apply to this tree. One was deliberately deferred rather than
+# ported — the legacy identifier derivation behind EncodeLegacyIdentifier. See
+# docs/2026-11-03-legacy-identifier-derivation.md. Moving the marker past it is
+# intentional: it has been reviewed, and the decision not to apply it yet is
+# recorded there rather than being rediscovered from the diff each week.
