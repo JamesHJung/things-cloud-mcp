@@ -1,0 +1,19 @@
+# Mirrors the upstream SDK's configuration, so a fix ported in either direction
+# meets the same bar.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose     # HTTP response bodies left unclosed leak connections
+    - copyloopvar   # stale loop-variable captures
+    - errorlint     # errors compared with == instead of errors.Is
+    - misspell
+    - rowserrcheck  # sql.Rows.Err() unchecked — exactly the bug found in scanChangeLog
+  exclusions:
+    presets:
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt

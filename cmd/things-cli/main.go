@@ -254,7 +254,7 @@ func requireEnv(key string) string {
 func outputJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	_ = enc.Encode(v)
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,6 @@ func newTaskCreatePayload(title string, opts map[string]string) (TaskCreatePaylo
 	pr := []string{}
 	agr := []string{}
 	ar := []string{}
-	tg := []string{}
 	nt := emptyNote()
 
 	projectID, err := validateOptionalUUID("project", opts["project"])
@@ -288,7 +287,7 @@ func newTaskCreatePayload(title string, opts map[string]string) (TaskCreatePaylo
 	if err != nil {
 		return TaskCreatePayload{}, err
 	}
-	tg, err = parseUUIDList("tags", opts["tags"])
+	tg, err := parseUUIDList("tags", opts["tags"])
 	if err != nil {
 		return TaskCreatePayload{}, err
 	}
@@ -554,7 +553,7 @@ func (ctx *cliContext) loadState() *memory.State {
 	}
 
 	state := memory.NewState()
-	state.Update(allItems...)
+	_ = state.Update(allItems...)
 	return state
 }
 

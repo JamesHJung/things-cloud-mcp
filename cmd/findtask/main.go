@@ -11,9 +11,9 @@ import (
 
 func main() {
 	c := thingscloud.New(thingscloud.APIEndpoint, os.Getenv("THINGS_USERNAME"), os.Getenv("THINGS_PASSWORD"))
-	c.Verify()
+	_, _ = c.Verify()
 	history, _ := c.OwnHistory()
-	history.Sync()
+	_ = history.Sync()
 
 	state := memory.NewState()
 	target := "2MNjM5gT" // Book Teeth Cleaning
@@ -21,34 +21,34 @@ func main() {
 	startIndex := 0
 	for {
 		items, hasMore, _ := history.Items(thingscloud.ItemsOptions{StartIndex: startIndex})
-		
+
 		// Check state before update
 		if t, ok := state.Tasks[target+"5hZt2sSEw4PvDb"]; ok {
 			fmt.Printf("BEFORE batch: Task exists, title=%q trash=%v\n", t.Title, t.InTrash)
 		}
-		
-		state.Update(items...)
-		
+
+		_ = state.Update(items...)
+
 		// Check state after update
 		if t, ok := state.Tasks[target+"5hZt2sSEw4PvDb"]; ok {
 			fmt.Printf("AFTER batch: Task exists, title=%q trash=%v\n", t.Title, t.InTrash)
 		}
-		
+
 		// Look for our target in this batch
 		for _, item := range items {
 			if item.UUID == target+"5hZt2sSEw4PvDb" {
 				var p map[string]interface{}
-				json.Unmarshal(item.P, &p)
+				_ = json.Unmarshal(item.P, &p)
 				fmt.Printf("Found item: Kind=%s Action=%d tr=%v\n", item.Kind, item.Action, p["tr"])
 			}
 		}
-		
+
 		if !hasMore {
 			break
 		}
 		startIndex = history.LoadedServerIndex
 	}
-	
+
 	fmt.Printf("\nFinal state has %d tasks\n", len(state.Tasks))
 	if t, ok := state.Tasks[target+"5hZt2sSEw4PvDb"]; ok {
 		fmt.Printf("Target task: %q trash=%v status=%d\n", t.Title, t.InTrash, t.Status)

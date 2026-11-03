@@ -108,6 +108,10 @@ func (st *State) AllAreasWithOpts(opts QueryOpts) ([]*things.Area, error) {
 		}
 		areas = append(areas, &a)
 	}
+	// Without this a truncated result set reads as a complete one.
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return areas, nil
 }
 
@@ -138,6 +142,9 @@ func (st *State) AllTagsWithOpts(opts QueryOpts) ([]*things.Tag, error) {
 			return nil, err
 		}
 		tags = append(tags, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return tags, nil
 }
@@ -366,6 +373,9 @@ func (st *State) ChecklistItems(taskUUID string) ([]*things.CheckListItem, error
 		c.Status = things.TaskStatus(status)
 		c.TaskIDs = []string{taskUUID}
 		items = append(items, &c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return items, nil
 }

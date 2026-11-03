@@ -141,7 +141,7 @@ func TestState_Update(t *testing.T) {
 		t.Parallel()
 		newState := func() *State {
 			s := NewState()
-			s.Update(things.Item{
+			_ = s.Update(things.Item{
 				Action: things.ItemActionCreated,
 				Kind:   things.ItemKindArea,
 				P:      json.RawMessage(newAreaPayload),
@@ -432,7 +432,7 @@ func TestState_Headings(t *testing.T) {
 		ParentTaskIDs:  &[]string{"proj-1"},
 	})
 
-	s.Update(
+	_ = s.Update(
 		things.Item{UUID: "proj-1", Kind: things.ItemKindTask, Action: things.ItemActionCreated, P: projPayload},
 		things.Item{UUID: "head-1", Kind: things.ItemKindTask, Action: things.ItemActionCreated, P: headPayload},
 		things.Item{UUID: "task-1", Kind: things.ItemKindTask, Action: things.ItemActionCreated, P: taskPayload},
@@ -468,7 +468,7 @@ func TestState_TasksWithoutArea_DeletedParent(t *testing.T) {
 		Type:          &taskType,
 		ParentTaskIDs: &[]string{"deleted-parent-id"},
 	})
-	s.Update(
+	_ = s.Update(
 		things.Item{UUID: "child-1", Kind: things.ItemKindTask, Action: things.ItemActionCreated, P: childPayload},
 	)
 

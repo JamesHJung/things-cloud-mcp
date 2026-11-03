@@ -40,7 +40,7 @@ func main() {
 		for _, item := range items {
 			if item.Kind == "Task6" && count < 20 {
 				var p map[string]interface{}
-				json.Unmarshal(item.P, &p)
+				_ = json.Unmarshal(item.P, &p)
 				if title, ok := p["tt"]; ok && title != nil {
 					fmt.Printf("UUID: %s, Title: %v, Action: %d\n", item.UUID, title, item.Action)
 					count++

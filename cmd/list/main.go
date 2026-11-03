@@ -46,7 +46,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Fetched %d items\n", len(items))
 
 	state := memory.NewState()
-	state.Update(items...)
+	_ = state.Update(items...)
 
 	fmt.Printf("=== TASKS (%d) ===\n", len(state.Tasks))
 	for _, task := range state.Tasks {

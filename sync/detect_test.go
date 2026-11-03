@@ -1147,7 +1147,6 @@ func TestTaskLocationString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.expected, func(t *testing.T) {
 			t.Parallel()
 			if tc.loc.String() != tc.expected {

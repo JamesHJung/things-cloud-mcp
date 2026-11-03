@@ -37,6 +37,18 @@ jobs:
       - name: Test (race detector, with coverage)
         run: go test -race -cover ./...
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.15.0
+
   # Things stores its date fields as date-only values at midnight UTC, so
   # anything classifying "today" has to reconcile a local calendar date with a
   # UTC-encoded one. That went wrong undetected because the suite only ever ran

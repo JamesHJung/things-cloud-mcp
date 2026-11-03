@@ -2,6 +2,7 @@ package sync
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,7 +144,7 @@ func TestOpen(t *testing.T) {
 		var historyID string
 		var serverIndex int
 		err = syncer.db.QueryRow(`SELECT history_id, server_index FROM sync_state WHERE id = 1`).Scan(&historyID, &serverIndex)
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("expected sync_state to be cleared, got history_id=%q server_index=%d err=%v", historyID, serverIndex, err)
 		}
 	})

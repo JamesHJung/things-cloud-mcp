@@ -54,7 +54,7 @@ func (s *Syncer) Rebuild() (RebuildResult, error) {
 	if err != nil {
 		return res, fmt.Errorf("beginning rebuild transaction: %w", err)
 	}
-	defer tx.Rollback() // No-op once committed
+	defer func() { _ = tx.Rollback() }() // No-op once committed
 
 	txSyncer := s.withDB(tx)
 

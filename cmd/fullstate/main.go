@@ -45,7 +45,7 @@ func main() {
 	}
 
 	state := memory.NewState()
-	state.Update(allItems...)
+	_ = state.Update(allItems...)
 
 	fmt.Printf("=== STATE SUMMARY ===\n")
 	fmt.Printf("Areas: %d\n", len(state.Areas))

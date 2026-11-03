@@ -10,13 +10,13 @@ import (
 )
 
 func main() {
-	target := "2MNjM5gT" // "Book Teeth Cleaning" 
-	
+	target := "2MNjM5gT" // "Book Teeth Cleaning"
+
 	c := thingscloud.New(thingscloud.APIEndpoint, os.Getenv("THINGS_USERNAME"), os.Getenv("THINGS_PASSWORD"))
-	c.Verify()
+	_, _ = c.Verify()
 
 	history, _ := c.OwnHistory()
-	history.Sync()
+	_ = history.Sync()
 
 	startIndex := 0
 	for {
@@ -24,7 +24,7 @@ func main() {
 		for _, item := range items {
 			if strings.HasPrefix(item.UUID, target) {
 				var p map[string]interface{}
-				json.Unmarshal(item.P, &p)
+				_ = json.Unmarshal(item.P, &p)
 				pJSON, _ := json.MarshalIndent(p, "", "  ")
 				fmt.Printf("=== %s Action:%d Kind:%s ===\n%s\n\n", item.UUID, item.Action, item.Kind, string(pJSON))
 			}

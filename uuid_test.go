@@ -86,8 +86,14 @@ func TestEncodeUUIDIsCanonicalForLeadingZeros(t *testing.T) {
 		u := mk(zeros)
 		enc := EncodeUUID(u)
 
-		if got := strings.IndexFunc(enc, func(r rune) bool { return r != '1' }); zeros > 0 && got != zeros && !(zeros == 16 && got == -1) {
-			t.Errorf("%d leading zero byte(s): encoding %q has %d leading '1's", zeros, enc, got)
+		// Count the leading '1's directly; an all-zero UUID encodes as
+		// nothing but '1's, so IndexFunc returns -1 and the count is len(enc).
+		ones := strings.IndexFunc(enc, func(r rune) bool { return r != '1' })
+		if ones < 0 {
+			ones = len(enc)
+		}
+		if ones != zeros {
+			t.Errorf("%d leading zero byte(s): encoding %q has %d leading '1's", zeros, enc, ones)
 		}
 
 		back, err := DecodeUUID(enc)

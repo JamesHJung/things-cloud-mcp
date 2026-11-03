@@ -36,13 +36,19 @@ const shutdownTimeout = 10 * time.Second
 
 func jsonResponse(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		// The header is already written, so this can only be logged.
+		log.Printf("[HTTP] encoding response: %v", err)
+	}
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": msg}); err != nil {
+		// The header is already written, so this can only be logged.
+		log.Printf("[HTTP] encoding response: %v", err)
+	}
 }
 
 func handleVerify(w http.ResponseWriter, r *http.Request) {
@@ -424,7 +430,10 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(items)
+		if err := json.NewEncoder(w).Encode(items); err != nil {
+			// The header is already written, so this can only be logged.
+			log.Printf("[HTTP] encoding response: %v", err)
+		}
 	}))
 
 	// Debug endpoint — list all history keys (uses SDK method with auth)

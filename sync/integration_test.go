@@ -226,21 +226,21 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 	today := dateOnly(time.Now())
 	yesterday := daysFromToday(-1)
 
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:          "sr-only",
 		Title:         "SR Only Today",
 		Status:        things.TaskStatusPending,
 		Schedule:      things.TaskScheduleAnytime,
 		ScheduledDate: &today,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "tir-only",
 		Title:               "TIR Only Today",
 		Status:              things.TaskStatusPending,
 		Schedule:            things.TaskScheduleAnytime,
 		TodayIndexReference: &today,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "both-today",
 		Title:               "Both Today",
 		Status:              things.TaskStatusPending,
@@ -248,7 +248,7 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 		ScheduledDate:       &today,
 		TodayIndexReference: &today,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "sr-old-tir-today",
 		Title:               "SR Old TIR Today",
 		Status:              things.TaskStatusPending,
@@ -256,7 +256,7 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 		ScheduledDate:       &yesterday,
 		TodayIndexReference: &today,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "sr-today-tir-old",
 		Title:               "SR Today TIR Old",
 		Status:              things.TaskStatusPending,
@@ -264,7 +264,7 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 		ScheduledDate:       &today,
 		TodayIndexReference: &yesterday,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "both-old",
 		Title:               "Both Old",
 		Status:              things.TaskStatusPending,
@@ -272,13 +272,13 @@ func TestTasksInTodayWithTIR(t *testing.T) {
 		ScheduledDate:       &yesterday,
 		TodayIndexReference: &yesterday,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:     "no-dates",
 		Title:    "No Dates",
 		Status:   things.TaskStatusPending,
 		Schedule: things.TaskScheduleAnytime,
 	})
-	syncer.saveTask(&things.Task{
+	_ = syncer.saveTask(&things.Task{
 		UUID:                "inbox-with-tir",
 		Title:               "Inbox TIR",
 		Status:              things.TaskStatusPending,
@@ -581,17 +581,17 @@ func TestStateQueries(t *testing.T) {
 	todayRef := dateOnly(time.Now())
 	futureRef := daysFromToday(2)
 	pastRef := daysFromToday(-2)
-	syncer.saveTask(&things.Task{UUID: "inbox-1", Title: "Inbox Task", Schedule: things.TaskScheduleInbox, Status: things.TaskStatusPending})
-	syncer.saveTask(&things.Task{UUID: "anytime-1", Title: "Anytime Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending})
-	syncer.saveTask(&things.Task{UUID: "today-ref-1", Title: "Today via tir", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending, TodayIndexReference: &todayRef})
-	syncer.saveTask(&things.Task{UUID: "someday-1", Title: "Someday Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending})
-	syncer.saveTask(&things.Task{UUID: "someday-past-1", Title: "Someday Past Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, ScheduledDate: &pastRef})
-	syncer.saveTask(&things.Task{UUID: "upcoming-1", Title: "Upcoming Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, ScheduledDate: &futureRef})
-	syncer.saveTask(&things.Task{UUID: "upcoming-ref-1", Title: "Upcoming via tir", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, TodayIndexReference: &futureRef})
-	syncer.saveTask(&things.Task{UUID: "completed-1", Title: "Completed Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusCompleted, CompletionDate: &completedAtRecent})
-	syncer.saveTask(&things.Task{UUID: "completed-2", Title: "Older Completed Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusCompleted, CompletionDate: &completedAtOlder})
-	syncer.saveTask(&things.Task{UUID: "trashed-1", Title: "Trashed Task", InTrash: true})
-	syncer.saveTask(&things.Task{UUID: "project-1", Title: "Test Project", Type: things.TaskTypeProject})
+	_ = syncer.saveTask(&things.Task{UUID: "inbox-1", Title: "Inbox Task", Schedule: things.TaskScheduleInbox, Status: things.TaskStatusPending})
+	_ = syncer.saveTask(&things.Task{UUID: "anytime-1", Title: "Anytime Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending})
+	_ = syncer.saveTask(&things.Task{UUID: "today-ref-1", Title: "Today via tir", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusPending, TodayIndexReference: &todayRef})
+	_ = syncer.saveTask(&things.Task{UUID: "someday-1", Title: "Someday Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending})
+	_ = syncer.saveTask(&things.Task{UUID: "someday-past-1", Title: "Someday Past Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, ScheduledDate: &pastRef})
+	_ = syncer.saveTask(&things.Task{UUID: "upcoming-1", Title: "Upcoming Task", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, ScheduledDate: &futureRef})
+	_ = syncer.saveTask(&things.Task{UUID: "upcoming-ref-1", Title: "Upcoming via tir", Schedule: things.TaskScheduleSomeday, Status: things.TaskStatusPending, TodayIndexReference: &futureRef})
+	_ = syncer.saveTask(&things.Task{UUID: "completed-1", Title: "Completed Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusCompleted, CompletionDate: &completedAtRecent})
+	_ = syncer.saveTask(&things.Task{UUID: "completed-2", Title: "Older Completed Task", Schedule: things.TaskScheduleAnytime, Status: things.TaskStatusCompleted, CompletionDate: &completedAtOlder})
+	_ = syncer.saveTask(&things.Task{UUID: "trashed-1", Title: "Trashed Task", InTrash: true})
+	_ = syncer.saveTask(&things.Task{UUID: "project-1", Title: "Test Project", Type: things.TaskTypeProject})
 
 	state := syncer.State()
 

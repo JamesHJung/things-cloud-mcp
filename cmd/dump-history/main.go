@@ -50,9 +50,9 @@ func main() {
 		}
 
 		var result struct {
-			Items              []json.RawMessage `json:"items"`
-			CurrentItemIndex   int               `json:"current-item-index"`
-			SchemaVersion      int               `json:"schema"`
+			Items            []json.RawMessage `json:"items"`
+			CurrentItemIndex int               `json:"current-item-index"`
+			SchemaVersion    int               `json:"schema"`
 		}
 		if err := json.Unmarshal(bs, &result); err != nil {
 			log.Printf("  Error unmarshaling: %v\n", err)
@@ -74,18 +74,19 @@ func main() {
 					E string          `json:"e"`
 					P json.RawMessage `json:"p"`
 				}
-				json.Unmarshal(val, &envelope)
+				_ = json.Unmarshal(val, &envelope)
 
 				action := "CREATE"
-				if envelope.T == 1 {
+				switch envelope.T {
+				case 1:
 					action = "MODIFY"
-				} else if envelope.T == 2 {
+				case 2:
 					action = "DELETE"
 				}
 
 				// Pretty print the payload
 				var pretty bytes.Buffer
-				json.Indent(&pretty, envelope.P, "       ", "  ")
+				_ = json.Indent(&pretty, envelope.P, "       ", "  ")
 
 				fmt.Printf("  [%d] %s %s %s\n       %s\n\n", i, action, envelope.E, uuid, pretty.String())
 			}
