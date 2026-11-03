@@ -45,7 +45,7 @@ func (h *History) Sync() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http response code: %s", resp.Status)
+		return &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 
 	bs, err := io.ReadAll(resp.Body)
@@ -78,7 +78,7 @@ func (h *History) RawItems() (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http response code: %s", resp.Status)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *Client) History(id string) (*History, error) {
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, ErrUnauthorized
 		}
-		return nil, fmt.Errorf("http response code: %s", resp.Status)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -167,7 +167,7 @@ func (c *Client) Histories() ([]*History, error) {
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, ErrUnauthorized
 		}
-		return nil, fmt.Errorf("http response code: %s", resp.Status)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -208,7 +208,7 @@ func (c *Client) CreateHistory() (*History, error) {
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, ErrUnauthorized
 		}
-		return nil, fmt.Errorf("http response code: %s", resp.Status)
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 
 	}
 	bs, err := io.ReadAll(resp.Body)
@@ -239,7 +239,7 @@ func (h *History) Delete() error {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("http response code: %s", resp.Status)
+		return &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	return nil
 }

@@ -33,7 +33,7 @@ func (c *Client) RegisterAppInstance(req AppInstanceRequest) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http response code: %s", resp.Status)
+		return &HTTPStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	return nil
 }

@@ -52,6 +52,17 @@ func (s *Syncer) processItems(items []things.Item, baseIndex int) ([]Change, err
 		allChanges = append(allChanges, changes...)
 	}
 
+	// Persist the cursor in the same transaction as the batch it covers, so
+	// the two can never disagree: either both land or neither does. A resume
+	// then continues after the last committed batch instead of replaying it.
+	// Replaying matters beyond duplicate change_log rows — note updates can
+	// arrive as delta patches, and applying one twice corrupts the note.
+	if s.history != nil {
+		if err := txSyncer.saveSyncState(s.history.ID, s.history.LoadedServerIndex); err != nil {
+			return nil, fmt.Errorf("saving sync state: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("committing transaction: %w", err)
 	}

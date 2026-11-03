@@ -4,7 +4,8 @@ package sync
 
 import (
 	"database/sql"
-	"strings"
+	"errors"
+	"net"
 	gosync "sync"
 	"time"
 
@@ -82,16 +83,31 @@ func (s *Syncer) Close() error {
 	return s.rawDB.Close()
 }
 
-// isRetryableError returns true if the error is a temporary server error worth retrying.
+// isRetryableError reports whether an error is worth another attempt.
+//
+// This used to substring-match "500".."504" against the error text, which is
+// both too loose and too tight: any message that happens to contain those
+// digits — a task title, a byte count, an index — looked retryable, while a
+// genuine 503 wrapped in different wording did not.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "500") ||
-		strings.Contains(errStr, "502") ||
-		strings.Contains(errStr, "503") ||
-		strings.Contains(errStr, "504")
+
+	// A real upstream server error.
+	var statusErr *things.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode >= 500 && statusErr.StatusCode <= 504
+	}
+
+	// A stalled or dropped connection deserves another attempt; a malformed
+	// request or a decode failure does not.
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+
+	return false
 }
 
 // changeLogColumns is the column list every change_log read shares, so the
@@ -152,6 +168,13 @@ func (s *Syncer) Sync() ([]Change, error) {
 
 	// If our cursor is already at or beyond the server's index, nothing to fetch
 	if startIndex >= serverIndex {
+		// Nothing to fetch. Still record the history id on a first sync, so
+		// the next one can skip the extra /account lookup.
+		if storedHistoryID == "" {
+			if err := s.saveSyncState(s.history.ID, startIndex); err != nil {
+				return nil, err
+			}
+		}
 		if err := s.purgeDeleted(); err != nil {
 			return nil, err
 		}
@@ -198,10 +221,14 @@ func (s *Syncer) Sync() ([]Change, error) {
 		hasMore = more
 	}
 
-	// Save sync state
-	if err := s.saveSyncState(s.history.ID, s.history.LatestServerIndex); err != nil {
-		return nil, err
-	}
+	// The cursor is persisted per batch, inside the same transaction as the
+	// batch it covers (see processItems). Saving it here instead was wrong in
+	// two ways: a failure part-way through a multi-page sync left the cursor
+	// where it started, so already-committed batches were replayed — which
+	// double-applies note delta patches and duplicates change_log rows — and
+	// it recorded LatestServerIndex, the server's head, rather than what was
+	// actually read, so a loop that ended early skipped the difference
+	// permanently.
 	if err := s.purgeDeleted(); err != nil {
 		return nil, err
 	}
