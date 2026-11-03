@@ -9,9 +9,9 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=1 go build -o things-server ./server/
 # The one-off sync-database repair tool. Shipped in the image because the
-# database lives in the container's /data volume and the host (e.g. a NAS) has
-# no Go toolchain:
-#   docker exec things-mcp things-rebuild -diagnose -db /data/things.db
+# database lives in the container's /data volume, where the host may well have
+# no Go toolchain of its own:
+#   docker exec <container> things-rebuild -diagnose
 RUN CGO_ENABLED=1 go build -o things-rebuild ./cmd/rebuild/
 
 FROM alpine:latest

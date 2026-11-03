@@ -23,7 +23,7 @@ import (
 )
 
 // containerDBPath is where server/main.go opens its database inside the
-// container image, and therefore where a NAS/Docker deployment keeps it.
+// container image, and therefore where a containerised deployment keeps it.
 const containerDBPath = "/data/things.db"
 
 // resolveDBPath picks the database to operate on, in order of precedence:
