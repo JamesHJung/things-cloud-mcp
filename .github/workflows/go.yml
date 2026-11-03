@@ -1,0 +1,60 @@
+name: Go
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Track go.mod rather than a pinned version, which had drifted behind
+          # it (1.23 against a go 1.24.0 module) and would have failed the
+          # moment this workflow actually ran.
+          go-version-file: go.mod
+
+      - run: go build -v ./...
+
+      - run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Test coverage
+        run: go test -cover ./...
+
+  # Things stores its date fields as date-only values at midnight UTC, so
+  # anything that classifies "today" has to reconcile a local calendar date
+  # with a UTC-encoded one. That went wrong undetected because the whole suite
+  # only ever ran at UTC, where the two coincide. Run it somewhere the local
+  # and UTC dates disagree for part of the day, in both directions.
+  timezones:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tz:
+          - UTC
+          - America/Los_Angeles   # UTC-8: local date behind UTC each evening
+          - Pacific/Kiritimati    # UTC+14: local date ahead of UTC each morning
+          - Asia/Kolkata          # UTC+5:30: non-whole-hour offset
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test (TZ=${{ matrix.tz }})
+        env:
+          TZ: ${{ matrix.tz }}
+        run: go test -count=1 ./...

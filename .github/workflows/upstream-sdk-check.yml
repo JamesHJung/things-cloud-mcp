@@ -1,0 +1,77 @@
+# Weekly check for upstream SDK changes this fork has not been reviewed against.
+#
+# The sync engine here comes from arthursoares/things-cloud-sdk. The histories
+# are unrelated (the code was copied, not forked) and the trees have diverged,
+# so upstream changes are ported after review rather than merged. This opens or
+# updates a single tracking issue listing what is new since the SHA recorded in
+# .github/upstream-sdk-synced.
+#
+# NOTE: GitHub disables scheduled workflows in forked repositories until Actions
+# is enabled on the fork, and pauses them after 60 days with no repository
+# activity. If the schedule is not firing, run it from the Actions tab
+# (workflow_dispatch) and check Settings > Actions.
+name: upstream-sdk-check
+
+on:
+  schedule:
+    # Mondays at 13:17 UTC. Deliberately off the hour: every project that picks
+    # "0 13" lands on the API at the same instant.
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-sdk-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List unreviewed upstream commits
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body="$(./scripts/check-upstream-sdk.sh --markdown)"
+          if [ "$body" = "NO_NEW_COMMITS" ]; then
+            echo "up to date"
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_new=true" >> "$GITHUB_OUTPUT"
+          {
+            echo 'body<<UPSTREAM_EOF'
+            echo "$body"
+            echo 'UPSTREAM_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.has_new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ steps.check.outputs.body }}
+          TITLE: "Upstream SDK: commits awaiting review"
+        run: |
+          set -euo pipefail
+          gh label create upstream-sdk --color BFD4F2 \
+            --description "Tracks unreviewed arthursoares/things-cloud-sdk changes" 2>/dev/null || true
+
+          existing="$(gh issue list --label upstream-sdk --state open \
+            --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            # Replace the body so the checklist always reflects the current gap,
+            # rather than accumulating a new issue every week.
+            printf '%s\n' "$BODY" | gh issue edit "$existing" --body-file -
+            echo "updated issue #$existing"
+          else
+            printf '%s\n' "$BODY" | gh issue create --title "$TITLE" \
+              --label upstream-sdk --body-file -
+          fi

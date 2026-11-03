@@ -1,0 +1,15 @@
+6919edc62da7ac98dbd8afbdffccc48fcd0807ed
+# The upstream SDK commit this fork has been reviewed against.
+#
+# Upstream: https://github.com/arthursoares/things-cloud-sdk
+#
+# The sync engine in this repository originates there. The MCP server layer is
+# this repository's own, and the two trees have diverged (different schema
+# versions, different file sets), so upstream changes are *ported*, never
+# merged. This file records how far that review has got.
+#
+# When you have reviewed the upstream commits above this marker — applying what
+# applies and deciding against the rest — move the SHA on the first line
+# forward and say what you concluded in the commit message.
+#
+# scripts/check-upstream-sdk.sh lists what is new since the marker.

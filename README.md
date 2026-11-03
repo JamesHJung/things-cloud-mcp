@@ -388,6 +388,35 @@ serialised internally. Do **not** run two server processes against the same
 `things.db`: that is cross-process SQLite contention and you will get
 `SQLITE_BUSY`. Separate instances need separate database files.
 
+## Staying in sync with the upstream SDK
+
+The sync engine originates in
+[`arthursoares/things-cloud-sdk`](https://github.com/arthursoares/things-cloud-sdk),
+which is actively maintained. The two histories are **unrelated** — the code was
+copied here rather than forked — and the trees have since diverged (different
+schema versions, different file sets, an MCP server layer that exists only
+here). So upstream changes are **read, assessed and ported**, never merged.
+
+`.github/upstream-sdk-synced` records the upstream commit this fork has been
+reviewed against. To see what is new since then:
+
+```bash
+scripts/check-upstream-sdk.sh            # grouped, fixes first
+scripts/check-upstream-sdk.sh --markdown # issue-ready checklist
+```
+
+`.github/workflows/upstream-sdk-check.yml` runs that weekly and keeps a single
+tracking issue up to date, labelled `upstream-sdk`. When the listed commits have
+been worked through, move the SHA in the marker file forward and say in the
+commit message what was applied and what was rejected.
+
+Each upstream commit needs a *does this fork actually have this bug?* check
+before anything is applied. That is not a formality — upstream's own fix for the
+Today-view date handling is correct for `isToday` and **wrong** for the day-bounds
+query at negative UTC offsets, so porting it wholesale would have introduced a
+worse bug than the one it fixed. See
+[Sync correctness](#sync-correctness-deletions-cascades-and-the-task7-bucket).
+
 ## Operational Notes
 
 - **Startup is fail-fast.** The server now requires the initial sync to succeed before it starts serving REST or MCP traffic.
