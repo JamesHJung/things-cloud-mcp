@@ -309,7 +309,52 @@ they appear in mail-to-inbox payloads. Malformed IDs are still rejected.
 
 ---
 
-## 9. Verification
+## 9. Validated against the live Things Cloud history
+
+The inference in §2 and §7 — that the 348 empty-payload `Task7` items were
+deletions — was an inference, because the pre-v5 `change_log` never stored the
+envelope. It has since been checked against the wire format directly, with a
+read-only fetch of history index 4694:
+
+```
+items at index 4694: 354
+  e=Task7      t=2 (DELETE)  empty_payload=true   count=348
+  e=Tombstone2 t=0 (create)  empty_payload=false  count=6
+  sample: uuid=… kind=Task7 action=2 payload={}
+```
+
+`t=2` confirms the inference. (The other six are `Tombstone2` creates, which is
+how the old parser produced its six working `TaskDeleted` changes at that index
+— via the tombstone path, not the task path.)
+
+Stronger still, **`cmd/rebuild` reproduces a genuine from-zero sync exactly.**
+Replaying `change_log` with the inferred envelopes and syncing the same history
+fresh from Things Cloud through the same code produce **set-identical** state:
+
+| | open tasks | vs a true from-zero sync |
+|---|---|---|
+| from-zero sync, fixed code | 213 | — |
+| `cmd/rebuild` replay | 213 | **identical, 0 differences either way** |
+| old code (either route) | 228 | 5 missing, 20 that should be gone |
+
+A from-zero sync through the fixed code also materialized all five of the
+`Task7`-created to-dos the old parser had dropped, confirming §1 end to end
+against live data rather than a fixture.
+
+### A useful deployment check
+
+For the same history, the two versions log very different numbers of changes —
+the fixed code classifies items the old one discarded and adds
+`TaskFieldsUpdated` rows:
+
+- old code: **5,238** changes
+- fixed code: **11,086** changes
+
+So the `Initial sync complete: N changes` line on a from-zero start is a quick
+way to tell which build is actually running, independently of any schema or
+state inspection.
+
+## 10. Verification
 
 - `go build ./...`, `go vet ./...` clean; `go test ./...` and `go test -race
   ./...` green.
@@ -324,7 +369,7 @@ they appear in mail-to-inbox payloads. Malformed IDs are still rejected.
   and never materialized.
 - Both `AreaDeleteMode` values exercised against the live database.
 
-## 10. Out of scope
+## 11. Out of scope
 
 Untouched, as agreed: the Cloudflare/auth layer and `docker-compose`. Nine
 pre-existing `gofmt`-unclean files under `cmd/` and `example/` were left alone;
