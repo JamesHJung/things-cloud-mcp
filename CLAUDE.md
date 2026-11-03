@@ -87,6 +87,17 @@ See `cmd/README.md` for detailed documentation. Key tools:
 - **`synctest`** — Human-readable sync output for testing
 - **`rebuild`** — One-off repair: replays `change_log` to rebuild local state (no network needed)
 
+### Transports
+
+`newMCPServer()` in `server/mcp.go` builds the MCP server and registers every
+tool; transport is not its concern. `newMCPHandler()` serves it over Streamable
+HTTP at `/mcp`, and `-stdio` serves the same server over stdin/stdout for a
+client that launches the process. Register new tools in `newMCPServer` only, so
+the two transports cannot expose different capabilities.
+
+In stdio mode **stdout carries the protocol** — never write to it. `log` goes to
+stderr, which is correct and where clients surface server output.
+
 ### Test Infrastructure
 
 Tests use `httptest.Server` with pre-recorded JSON responses in the `tapes/` directory. Tests use `t.Parallel()`.
@@ -115,6 +126,8 @@ The example app and real usage require:
 - `THINGS_USERNAME` — Things account email
 - `THINGS_PASSWORD` — Things account password
 - `API_KEY` — Bearer token for `/api/*` endpoints (optional, no auth if unset). Does **not** gate `/mcp`.
+- `THINGS_DB_PATH` — Where the SQLite database lives. Defaults to `/data/things.db` in a container, else `~/.things-cloud-mcp/things.db`. Previously hardcoded to `/data/things.db`.
+- `THINGS_API_ENDPOINT` — Override the Things Cloud endpoint. A testing seam: startup is fail-fast on a real sync, so the stdio transport cannot be exercised at all without pointing the server at a stub. Leave unset in normal use.
 - `MCP_TOKEN` — Bearer token required on `/mcp` (optional, no auth if unset). Deliberately separate from `API_KEY` so enabling REST auth cannot break a connector that authenticates at the network edge. See `server/mcpauth.go`.
 - `PORT` — Server port (default: `8080`)
 - `DEBUG` — Enable verbose HTTP request/response logging when `true`

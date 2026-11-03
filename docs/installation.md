@@ -48,10 +48,24 @@ Pick whichever fits. All three want the same three things: your credentials in
 the environment, a writable path for the database, and port 8080 reachable by
 your MCP client.
 
-### Locally
+### Locally, over stdio
 
-The lowest-risk option, and the one to prefer if you only use this yourself:
-your Things credentials never leave your machine.
+The lowest-risk option and the one to prefer if you only use this yourself.
+The client launches the server as a child process and talks to it over a pipe,
+so there is no port, no network exposure and nothing to authenticate, and your
+credentials never leave the machine.
+
+```bash
+go build -o things-mcp ./server/
+claude mcp add things -- "$PWD/things-mcp" -stdio
+```
+
+The database defaults to `~/.things-cloud-mcp/things.db`; set `THINGS_DB_PATH`
+to put it elsewhere. Logs go to stderr, because stdout carries the protocol.
+
+### Locally, over HTTP
+
+If you would rather run it as a server:
 
 ```bash
 export THINGS_USERNAME='your-things-email'
@@ -209,7 +223,9 @@ serving a request.
 | `THINGS_USERNAME` | Yes | Your Things account email |
 | `THINGS_PASSWORD` | Yes | Your Things account password |
 | `API_KEY` | No | Bearer token for REST API endpoints (`/api/*`). If unset, no auth required. Does not affect `/mcp`. |
-| `MCP_TOKEN` | No | Bearer token required on `/mcp`. If unset, the MCP endpoint is unauthenticated. |
+| `MCP_TOKEN` | No | Bearer token required on `/mcp`. If unset, the MCP endpoint is unauthenticated. Not used in stdio mode. |
+| `THINGS_DB_PATH` | No | Where to keep the SQLite database. Defaults to `/data/things.db` in a container, else `~/.things-cloud-mcp/things.db`. |
+| `THINGS_API_ENDPOINT` | No | Override the Things Cloud endpoint. For pointing at a stub in tests; leave unset in normal use. |
 | `PORT` | No | Server port (default: `8080`) |
 | `DEBUG` | No | Set to `true` for verbose HTTP logging |
 

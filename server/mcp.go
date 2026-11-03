@@ -884,7 +884,20 @@ func countStatus(checks []smokeCheck, status string) int {
 // MCP server setup
 // ---------------------------------------------------------------------------
 
+// newMCPHandler serves the MCP server over Streamable HTTP at /mcp.
 func newMCPHandler() http.Handler {
+	return server.NewStreamableHTTPServer(newMCPServer(),
+		server.WithEndpointPath("/mcp"),
+		server.WithStateLess(true),
+	)
+}
+
+// newMCPServer builds the MCP server and registers every tool.
+//
+// Transport is deliberately not its concern: the same server is served over
+// Streamable HTTP by newMCPHandler and over stdio by the -stdio flag, so the
+// two transports cannot drift apart in which tools they expose.
+func newMCPServer() *server.MCPServer {
 	s := server.NewMCPServer("Things Cloud", "1.1.0")
 
 	// --- Read tools ---
@@ -1334,8 +1347,5 @@ func newMCPHandler() http.Handler {
 		mcp.WithDescription("Run a smoke test that creates a task, verifies read/edit/complete, then cleans up. Returns pass/fail results for each check."),
 	), mcpSmokeTest)
 
-	return server.NewStreamableHTTPServer(s,
-		server.WithEndpointPath("/mcp"),
-		server.WithStateLess(true),
-	)
+	return s
 }

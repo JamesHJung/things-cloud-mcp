@@ -133,9 +133,41 @@ generally expect the MCP OAuth flow rather than a static header; this server is
 not an OAuth authorization server, so pair it with an identity-aware proxy and
 leave `MCP_TOKEN` unset.
 
-**Running it locally** sidesteps all of the above: start the server on
-`127.0.0.1` and point your client at `http://localhost:8080/mcp`. Your Things
-credentials never leave the machine, which is the lowest-risk way to use this.
+### Local, over stdio
+
+The lowest-risk way to use this. The client launches the server as a child
+process and talks to it over a pipe — no port, no network, no token, and your
+Things credentials never leave the machine.
+
+```bash
+go build -o things-mcp ./server/
+```
+
+**Claude Code**
+
+```bash
+claude mcp add things -- /path/to/things-mcp -stdio
+```
+
+Any MCP client that launches local servers takes the same shape — a command and
+its arguments, with the credentials in the environment:
+
+```json
+{ "mcpServers": { "things": {
+    "command": "/path/to/things-mcp",
+    "args": ["-stdio"],
+    "env": { "THINGS_USERNAME": "...", "THINGS_PASSWORD": "..." } } } }
+```
+
+The database defaults to `~/.things-cloud-mcp/things.db` outside a container;
+`THINGS_DB_PATH` overrides it. Startup syncs before serving, so the first launch
+takes a few seconds and later ones are immediate.
+
+In this mode stdout carries the protocol and nothing else — logs go to stderr,
+where your client surfaces them.
+
+**Running the HTTP server locally** also works if you prefer it: start it and
+point your client at `http://localhost:8080/mcp`.
 
 ### One server, several clients
 

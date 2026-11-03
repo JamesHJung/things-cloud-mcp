@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
+
+	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	things "github.com/JamesHJung/things-cloud-mcp"
 	"github.com/JamesHJung/things-cloud-mcp/sync"
@@ -361,6 +365,55 @@ func serveWithGracefulShutdown(ctx context.Context, srv shutdownServer, timeout 
 	return nil
 }
 
+// resolveDBPath picks where the sync database lives: THINGS_DB_PATH, else the
+// container path when it is usable, else a per-user directory.
+//
+// The container path used to be hardcoded, which is fine inside the image and
+// wrong everywhere else — running locally meant creating /data by hand.
+func resolveDBPath() (string, error) {
+	if p := os.Getenv("THINGS_DB_PATH"); p != "" {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+
+	const containerDir = "/data"
+	if st, err := os.Stat(containerDir); err == nil && st.IsDir() {
+		if f, err := os.CreateTemp(containerDir, ".writable-*"); err == nil {
+			name := f.Name()
+			_ = f.Close()
+			_ = os.Remove(name)
+			return filepath.Join(containerDir, "things.db"), nil
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".things-cloud-mcp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "things.db"), nil
+}
+
+// serveStdio runs the MCP server over stdin/stdout for a local client.
+//
+// stdout carries the protocol, so nothing may be written to it. The log
+// package writes to stderr, which is where the client shows server output, so
+// the sync logging stays visible and harmless.
+//
+// There is no HTTP listener, no port and no MCP_TOKEN in this mode: the
+// transport is a pipe from the client that launched the process, so there is
+// nothing to authenticate and nothing exposed to a network.
+func serveStdio() error {
+	log.SetOutput(os.Stderr)
+	log.Println("Serving MCP over stdio; protocol on stdout, logs on stderr")
+	return mcpserver.ServeStdio(newMCPServer())
+}
+
 func main() {
 	username := os.Getenv("THINGS_USERNAME")
 	password := os.Getenv("THINGS_PASSWORD")
@@ -368,18 +421,34 @@ func main() {
 		log.Fatal("THINGS_USERNAME and THINGS_PASSWORD must be set")
 	}
 
+	stdio := flag.Bool("stdio", false,
+		"Serve MCP over stdin/stdout instead of HTTP, for a local MCP client "+
+			"that launches this process. No port is opened.")
+	flag.Parse()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	client = things.New(things.APIEndpoint, username, password)
+	// THINGS_API_ENDPOINT exists so the server can be pointed at a stub for
+	// testing — the stdio transport in particular cannot be exercised at all
+	// without starting the process, and startup is fail-fast on a real sync.
+	// Unset, it is the real Things Cloud endpoint.
+	endpoint := os.Getenv("THINGS_API_ENDPOINT")
+	if endpoint == "" {
+		endpoint = things.APIEndpoint
+	}
+	client = things.New(endpoint, username, password)
 	client.Debug = os.Getenv("DEBUG") == "true"
 
-	var err error
-	syncer, err = sync.Open("/data/things.db", client)
+	dbPath, err := resolveDBPath()
 	if err != nil {
-		log.Fatalf("failed to open sync database: %v", err)
+		log.Fatalf("failed to resolve database path: %v", err)
+	}
+	syncer, err = sync.Open(dbPath, client)
+	if err != nil {
+		log.Fatalf("failed to open sync database %s: %v", dbPath, err)
 	}
 	defer syncer.Close()
 
@@ -396,6 +465,14 @@ func main() {
 		log.Fatalf("failed to sync history: %v", err)
 	}
 	log.Println("History ready for writes")
+
+	// stdio mode stops here: same MCP server, different transport, no listener.
+	if *stdio {
+		if err := serveStdio(); err != nil {
+			log.Fatalf("stdio server: %v", err)
+		}
+		return
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
