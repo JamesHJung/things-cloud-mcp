@@ -273,6 +273,12 @@ type Identifiable interface {
 func (h *History) Write(items ...Identifiable) error {
 	m := map[string]interface{}{}
 	for _, item := range items {
+		// The commit body is a JSON object keyed by UUID, so a second
+		// operation on the same item would silently replace the first
+		// rather than both being applied. Reject it.
+		if _, dup := m[item.UUID()]; dup {
+			return fmt.Errorf("refusing to write items: duplicate UUID %s in one commit; split into separate Write calls", item.UUID())
+		}
 		m[item.UUID()] = item
 	}
 	bs, err := json.Marshal(m)

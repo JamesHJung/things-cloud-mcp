@@ -314,7 +314,6 @@ func newTaskCreatePayload(title string, opts map[string]string) (TaskCreatePaylo
 			tp = 1
 		case "heading":
 			tp = 2
-			st = 1 // headings are structural — always "started" (anytime), never inbox
 		}
 	}
 
@@ -333,6 +332,13 @@ func newTaskCreatePayload(title string, opts map[string]string) (TaskCreatePaylo
 		case "inbox":
 			st = 0
 		}
+	}
+
+	// Projects and headings are structural: they are never in the Inbox.
+	// This has to run *after* --when, which would otherwise put st back to 0
+	// — and a heading with st=0 crashes Things.app.
+	if tp != 0 && st == 0 {
+		st = 1
 	}
 
 	// --note

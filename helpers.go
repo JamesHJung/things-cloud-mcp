@@ -22,8 +22,15 @@ func TaskTypePtr(val TaskType) *TaskType {
 	return &val
 }
 
-// Time returns a pointer to a Time
+// Time returns a pointer to a Timestamp, or nil for the zero time.
+//
+// Timestamp marshals as a fractional Unix epoch via UnixNano, and the zero
+// time's UnixNano is far outside the representable range — it would be written
+// to Things Cloud as a date in 1754 rather than as "unset".
 func Time(val time.Time) *Timestamp {
+	if val.IsZero() {
+		return nil
+	}
 	ts := Timestamp(val)
 	return &ts
 }
