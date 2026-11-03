@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# Supersede an in-flight run for the same ref rather than letting both finish.
+# A rapid series of pushes otherwise runs CI to completion for every commit,
+# including the ones already obsolete by the time a runner picks them up.
+concurrency:
+  group: go-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,30 +32,29 @@ jobs:
 
       - run: go vet ./...
 
-      - name: Test
-        run: go test ./...
-
-      - name: Test with race detector
-        run: go test -race ./...
-
-      - name: Test coverage
-        run: go test -cover ./...
+      # One invocation, not three. A plain `go test` is fully subsumed by the
+      # race build, and coverage is just an extra report on the same run.
+      - name: Test (race detector, with coverage)
+        run: go test -race -cover ./...
 
   # Things stores its date fields as date-only values at midnight UTC, so
-  # anything that classifies "today" has to reconcile a local calendar date
-  # with a UTC-encoded one. That went wrong undetected because the whole suite
-  # only ever ran at UTC, where the two coincide. Run it somewhere the local
-  # and UTC dates disagree for part of the day, in both directions.
+  # anything classifying "today" has to reconcile a local calendar date with a
+  # UTC-encoded one. That went wrong undetected because the suite only ever ran
+  # at UTC, where the two coincide.
+  #
+  # The invariant itself is pinned by clock-injected tests with fixed zones, so
+  # they hold whatever TZ the runner uses. This matrix is defence in depth for
+  # the tests that do read the ambient clock, and so only needs one zone either
+  # side of UTC: UTC itself is already covered by the build job above, and
+  # fractional offsets are covered deterministically in sync/daybounds_test.go.
   timezones:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         tz:
-          - UTC
-          - America/Los_Angeles   # UTC-8: local date behind UTC each evening
-          - Pacific/Kiritimati    # UTC+14: local date ahead of UTC each morning
-          - Asia/Kolkata          # UTC+5:30: non-whole-hour offset
+          - America/Los_Angeles   # local date behind UTC each evening
+          - Pacific/Kiritimati    # local date ahead of UTC each morning
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -21,6 +21,9 @@ func TestDayBoundsUsesLocalDateAtUTCMidnight(t *testing.T) {
 
 	minus8 := time.FixedZone("UTC-8", -8*3600)
 	plus13 := time.FixedZone("UTC+13", 13*3600)
+	// Not every offset is a whole number of hours.
+	plus530 := time.FixedZone("UTC+5:30", 5*3600+30*60)
+	minus930 := time.FixedZone("UTC-9:30", -(9*3600 + 30*60))
 
 	cases := []struct {
 		name string
@@ -28,6 +31,18 @@ func TestDayBoundsUsesLocalDateAtUTCMidnight(t *testing.T) {
 		// The calendar day the window must cover, as a UTC-midnight date.
 		wantDay time.Time
 	}{
+		{
+			// 02:00 on the 3rd at UTC+5:30 is still 20:30 on the 2nd in UTC.
+			name:    "small hours at a half-hour offset ahead of UTC",
+			now:     time.Date(2026, 11, 3, 2, 0, 0, 0, plus530),
+			wantDay: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			// 20:00 on the 2nd at UTC-9:30 is 05:30 on the 3rd in UTC.
+			name:    "evening at a half-hour offset behind UTC",
+			now:     time.Date(2026, 11, 2, 20, 0, 0, 0, minus930),
+			wantDay: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC),
+		},
 		{
 			// 20:00 on the 2nd at UTC-8 is already 04:00 on the 3rd in UTC.
 			// The window must still be the 2nd — this is the regression.
