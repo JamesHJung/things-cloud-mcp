@@ -170,7 +170,7 @@ func (s *Syncer) replayableItems() (items []replayItem, logRows int, inferred in
 		action := things.ItemAction(itemAction.Int64)
 		if !itemKind.Valid || !itemAction.Valid {
 			// Logged before migration5 started recording the envelope.
-			kind, action = inferEnvelope(changeType, entityType, raw)
+			kind, action = inferEnvelope(changeType, entityType, entityUUID, raw)
 			inferred++
 		}
 
@@ -203,17 +203,36 @@ func (s *Syncer) replayableItems() (items []replayItem, logRows int, inferred in
 // payload alone is not: an empty "{}" payload means a deletion for the Task7
 // rows that triggered this work, but the same empty payload also appears on
 // genuine TaskCreated rows.
-func inferEnvelope(changeType, entityType string, payload json.RawMessage) (things.ItemKind, things.ItemAction) {
+func inferEnvelope(changeType, entityType, entityUUID string, payload json.RawMessage) (things.ItemKind, things.ItemAction) {
+	// Whether the item was a legacy kind decides whether its identifiers get
+	// derived, so the inferred kind has to get that right. entity_type cannot
+	// tell us — it records the semantic type ("Task", "Area"), not the raw
+	// kind — but the identifier shape can: only a pre-migration item keys its
+	// object by a hyphenated UUID.
+	legacy := things.IsLegacyIdentifier(entityUUID)
+
 	kind := things.ItemKind(entityType)
 	switch entityType {
 	case "Task", "Project", "Heading":
 		kind = things.ItemKindTask
+		if legacy {
+			kind = things.ItemKindTask4
+		}
 	case "ChecklistItem", "CheckListItem":
-		kind = things.ItemKindChecklistItem
+		kind = things.ItemKindChecklistItem3
+		if legacy {
+			kind = things.ItemKindChecklistItem
+		}
 	case "Area":
-		kind = things.ItemKindArea
+		kind = things.ItemKindArea3
+		if legacy {
+			kind = things.ItemKindArea
+		}
 	case "Tag":
-		kind = things.ItemKindTag
+		kind = things.ItemKindTag4
+		if legacy {
+			kind = things.ItemKindTag
+		}
 	}
 
 	action := things.ItemActionModified

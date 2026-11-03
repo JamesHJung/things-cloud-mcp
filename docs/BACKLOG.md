@@ -6,17 +6,18 @@ dated notes in this directory record what was done.
 For anything substantial, prefer a GitHub issue; this file is for protocol
 questions that have not been answered yet.
 
-## Legacy identifier derivation (known data defect)
+## Confirm whether a legacy identifier is still writable
 
-Objects created before Things Cloud's identifier migration are stored under two
-different keys, so 53 tasks on the account this was measured against exist as
-torn pairs — title on one row, current status on the other. Diagnosed, measured
-and **not fixed**: the fix changes ~589 task identifiers and calls the UUID
-validation relaxation into question, so it needs a decision and a live write
-test first.
-
-Full analysis, including the derivation algorithm and what fixing it involves:
+Resolved for reads: objects predating Things Cloud's identifier migration are
+now keyed by their derived identifier, which the Things app confirms is the
+current one. See
 [2026-11-03-legacy-identifier-derivation.md](2026-11-03-legacy-identifier-derivation.md).
+
+What is left is the write side. Write validation accepts legacy hyphenated
+identifiers, which was right when the database handed them out. It no longer
+does, so nothing should be generating them — the relaxation is harmless but
+probably pointless. One live write to a known legacy identifier would settle
+whether Things updates the object, ignores it, or creates a phantom.
 
 ## Investigate tag/area deletion via `Tombstone2`
 

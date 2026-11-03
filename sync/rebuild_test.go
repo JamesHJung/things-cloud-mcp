@@ -137,13 +137,20 @@ func TestRebuildInfersLegacyEnvelopes(t *testing.T) {
 		}
 	}
 
-	insert(1, "TaskCreated", "Task", "task-1", `{"tt":"Doomed","tp":0,"st":1}`)
-	insert(2, "TaskCreated", "Task", "task-2", `{"tt":"Keeper","tp":0,"st":1}`)
+	// Current-form (Base58) identifiers: a hyphenated one would be read as
+	// pre-migration and derived, which is a different behaviour tested
+	// elsewhere.
+	const doomed = "3KpQ7mWnXbTd2vZyRf9Jah"
+	const keeper = "4VtRs8xYnZbQdF2hJkLmNp"
+	const emptyPayloadCreate = "5WuSt9yZoAcReG3ikKmNnq"
+
+	insert(1, "TaskCreated", "Task", doomed, `{"tt":"Doomed","tp":0,"st":1}`)
+	insert(2, "TaskCreated", "Task", keeper, `{"tt":"Keeper","tp":0,"st":1}`)
 	// A pre-v5 create whose payload is also "{}" — proof that an empty
 	// payload alone cannot be read as a deletion.
-	insert(3, "TaskCreated", "Task", "task-3", `{}`)
+	insert(3, "TaskCreated", "Task", emptyPayloadCreate, `{}`)
 	// The mislabelled deletion.
-	insert(4, "UnknownChange", "Task7", "task-1", `{}`)
+	insert(4, "UnknownChange", "Task7", doomed, `{}`)
 
 	res, err := s.Rebuild()
 	if err != nil {
@@ -153,13 +160,13 @@ func TestRebuildInfersLegacyEnvelopes(t *testing.T) {
 		t.Errorf("Inferred = %d, want 4", res.Inferred)
 	}
 
-	if r := taskRow(t, s, "task-1"); r.found {
+	if r := taskRow(t, s, doomed); r.found {
 		t.Error("legacy UnknownChange deletion was not applied")
 	}
-	if r := taskRow(t, s, "task-2"); !r.found {
-		t.Error("task-2 should have been recreated by the replay")
+	if r := taskRow(t, s, keeper); !r.found {
+		t.Error("the surviving task should have been recreated by the replay")
 	}
-	if r := taskRow(t, s, "task-3"); !r.found {
+	if r := taskRow(t, s, emptyPayloadCreate); !r.found {
 		t.Error("an empty-payload TaskCreated must not be read as a deletion")
 	}
 }
@@ -167,40 +174,69 @@ func TestRebuildInfersLegacyEnvelopes(t *testing.T) {
 func TestInferEnvelope(t *testing.T) {
 	t.Parallel()
 
+	const legacyID = "A1B2C3D4-E5F6-4789-8ABC-DEF012345678"
+	const currentID = "3KpQ7mWnXbTd2vZyRf9Jah"
+	const instanceID = "A1B2C3D4-E5F6-4789-8ABC-DEF012345678-20261102"
+
 	cases := []struct {
 		name       string
 		changeType string
 		entityType string
+		uuid       string
 		payload    string
 		wantKind   things.ItemKind
 		wantAction things.ItemAction
 	}{
-		{"task delete", "TaskDeleted", "Task", `{}`, things.ItemKindTask, things.ItemActionDeleted},
-		{"project delete", "ProjectDeleted", "Project", `{}`, things.ItemKindTask, things.ItemActionDeleted},
-		{"heading delete", "HeadingDeleted", "Heading", `{}`, things.ItemKindTask, things.ItemActionDeleted},
-		{"area delete", "AreaDeleted", "Area", `{}`, things.ItemKindArea, things.ItemActionDeleted},
-		{"tag delete", "TagDeleted", "Tag", `{}`, things.ItemKindTag, things.ItemActionDeleted},
-		{"checklist delete", "ChecklistItemDeleted", "ChecklistItem", `{}`,
-			things.ItemKindChecklistItem, things.ItemActionDeleted},
-		// The mislabelled trash batch.
-		{"unknown task7 empty payload", "UnknownChange", "Task7", `{}`,
+		{"task delete", "TaskDeleted", "Task", currentID, `{}`,
+			things.ItemKindTask, things.ItemActionDeleted},
+		{"project delete", "ProjectDeleted", "Project", currentID, `{}`,
+			things.ItemKindTask, things.ItemActionDeleted},
+		{"area delete", "AreaDeleted", "Area", currentID, `{}`,
+			things.ItemKindArea3, things.ItemActionDeleted},
+		{"tag delete", "TagDeleted", "Tag", currentID, `{}`,
+			things.ItemKindTag4, things.ItemActionDeleted},
+		{"checklist delete", "ChecklistItemDeleted", "ChecklistItem", currentID, `{}`,
+			things.ItemKindChecklistItem3, things.ItemActionDeleted},
+
+		// The mislabelled trash-emptying batch.
+		{"unknown task7 empty payload", "UnknownChange", "Task7", currentID, `{}`,
 			things.ItemKind("Task7"), things.ItemActionDeleted},
 		// An empty payload on a named create is a create, not a delete.
-		{"empty payload create", "TaskCreated", "Task", `{}`, things.ItemKindTask, things.ItemActionModified},
-		{"normal update", "TaskCompleted", "Task", `{"ss":3}`, things.ItemKindTask, things.ItemActionModified},
+		{"empty payload create", "TaskCreated", "Task", currentID, `{}`,
+			things.ItemKindTask, things.ItemActionModified},
+		{"normal update", "TaskCompleted", "Task", currentID, `{"ss":3}`,
+			things.ItemKindTask, things.ItemActionModified},
 		// An empty payload on a non-entity kind is not a deletion.
-		{"command empty payload", "UnknownChange", "Command3", `{}`,
+		{"command empty payload", "UnknownChange", "Command3", currentID, `{}`,
 			things.ItemKind("Command3"), things.ItemActionModified},
+
+		// A hyphenated identifier means the item predates the identifier
+		// migration, so it must infer a *legacy* kind — that is what makes the
+		// replay derive its identifiers.
+		{"legacy task id", "TaskCreated", "Task", legacyID, `{"tt":"x"}`,
+			things.ItemKindTask4, things.ItemActionModified},
+		{"legacy area id", "AreaCreated", "Area", legacyID, `{"tt":"x"}`,
+			things.ItemKindArea, things.ItemActionModified},
+		{"legacy tag id", "TagCreated", "Tag", legacyID, `{"tt":"x"}`,
+			things.ItemKindTag, things.ItemActionModified},
+		{"legacy checklist id", "ChecklistItemCreated", "ChecklistItem", legacyID, `{"tt":"x"}`,
+			things.ItemKindChecklistItem, things.ItemActionModified},
+		{"repeating instance id is legacy", "TaskCreated", "Task", instanceID, `{"tt":"x"}`,
+			things.ItemKindTask4, things.ItemActionModified},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			kind, action := inferEnvelope(tc.changeType, tc.entityType, []byte(tc.payload))
+			kind, action := inferEnvelope(tc.changeType, tc.entityType, tc.uuid, []byte(tc.payload))
 			if kind != tc.wantKind {
 				t.Errorf("kind = %q, want %q", kind, tc.wantKind)
 			}
 			if action != tc.wantAction {
 				t.Errorf("action = %d, want %d", action, tc.wantAction)
+			}
+			if gotLegacy := isLegacyItemKind(kind); gotLegacy != things.IsLegacyIdentifier(tc.uuid) {
+				t.Errorf("isLegacyItemKind(%q) = %v, but the identifier shape says %v",
+					kind, gotLegacy, things.IsLegacyIdentifier(tc.uuid))
 			}
 		})
 	}

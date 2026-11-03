@@ -76,17 +76,26 @@ func (s *Syncer) processItems(items []things.Item, baseIndex int) ([]Change, err
 // Cloud bumps the version suffix on entity names between app releases, and
 // matching exact names meant a new "Task7" kind silently became UnknownChange.
 func (s *Syncer) processItem(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
+	// A legacy-kind item keys its object by the pre-migration identifier. Both
+	// the item's own key and the identifiers it references have to be derived,
+	// or one object ends up split across two rows — each holding a different
+	// subset of its history. See things.EncodeLegacyIdentifier.
+	legacy := isLegacyItemKind(item.Kind)
+	if legacy {
+		item.UUID = things.EncodeLegacyIdentifier(item.UUID)
+	}
+
 	switch classifyKind(item.Kind) {
 	case familyTask:
-		return s.processTaskItem(item, serverIndex, ts)
+		return s.processTaskItem(item, serverIndex, ts, legacy)
 	case familyArea:
 		return s.processAreaItem(item, serverIndex, ts)
 	case familyTag:
-		return s.processTagItem(item, serverIndex, ts)
+		return s.processTagItem(item, serverIndex, ts, legacy)
 	case familyChecklistItem:
-		return s.processChecklistItem(item, serverIndex, ts)
+		return s.processChecklistItem(item, serverIndex, ts, legacy)
 	case familyTombstone:
-		return s.processTombstone(item, serverIndex, ts)
+		return s.processTombstone(item, serverIndex, ts, legacy)
 	case familyIgnored:
 		// Settings, and the mail-to-inbox "Command" envelopes whose effect
 		// also arrives as a regular Task item. Recognised, not materialised.
@@ -110,7 +119,7 @@ func isEmptyPayload(raw json.RawMessage) bool {
 }
 
 // processTaskItem handles task/project/heading items.
-func (s *Syncer) processTaskItem(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
+func (s *Syncer) processTaskItem(item things.Item, serverIndex int, ts time.Time, legacy bool) ([]Change, error) {
 	// Get the old state
 	old, err := s.getTask(item.UUID)
 	if err != nil {
@@ -152,6 +161,23 @@ func (s *Syncer) processTaskItem(item things.Item, serverIndex int, ts time.Time
 			entityUUID: item.UUID,
 			Details:    fmt.Sprintf("unparsable task payload: %v", err),
 		}}, nil
+	}
+
+	if legacy {
+		// ar, pr, agr, tg and rt all hold identifiers of other objects.
+		if payload.AreaIDs != nil {
+			deriveLegacyIDs(*payload.AreaIDs)
+		}
+		if payload.ParentTaskIDs != nil {
+			deriveLegacyIDs(*payload.ParentTaskIDs)
+		}
+		if payload.ActionGroupIDs != nil {
+			deriveLegacyIDs(*payload.ActionGroupIDs)
+		}
+		if payload.RecurrenceTaskIDs != nil {
+			deriveLegacyIDs(*payload.RecurrenceTaskIDs)
+		}
+		deriveLegacyIDs(payload.TagIDs)
 	}
 
 	carried := payloadFields(item.P)
@@ -279,7 +305,7 @@ func (s *Syncer) processAreaItem(item things.Item, serverIndex int, ts time.Time
 }
 
 // processTagItem handles tag items.
-func (s *Syncer) processTagItem(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
+func (s *Syncer) processTagItem(item things.Item, serverIndex int, ts time.Time, legacy bool) ([]Change, error) {
 	// Get the old state
 	old, err := s.getTag(item.UUID)
 	if err != nil {
@@ -300,6 +326,10 @@ func (s *Syncer) processTagItem(item things.Item, serverIndex int, ts time.Time)
 	var payload things.TagActionItemPayload
 	if err := json.Unmarshal(item.P, &payload); err != nil {
 		return nil, fmt.Errorf("unmarshaling tag payload: %w", err)
+	}
+
+	if legacy && payload.ParentTagIDs != nil {
+		deriveLegacyIDs(*payload.ParentTagIDs)
 	}
 
 	// Build new state from old or create new
@@ -332,7 +362,7 @@ func (s *Syncer) processTagItem(item things.Item, serverIndex int, ts time.Time)
 }
 
 // processChecklistItem handles checklist items.
-func (s *Syncer) processChecklistItem(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
+func (s *Syncer) processChecklistItem(item things.Item, serverIndex int, ts time.Time, legacy bool) ([]Change, error) {
 	// Get the old state
 	old, err := s.getChecklistItem(item.UUID)
 	if err != nil {
@@ -353,6 +383,10 @@ func (s *Syncer) processChecklistItem(item things.Item, serverIndex int, ts time
 	var payload things.CheckListActionItemPayload
 	if err := json.Unmarshal(item.P, &payload); err != nil {
 		return nil, fmt.Errorf("unmarshaling checklist payload: %w", err)
+	}
+
+	if legacy && payload.TaskIDs != nil {
+		deriveLegacyIDs(*payload.TaskIDs)
 	}
 
 	// Build new state from old or create new
@@ -408,7 +442,7 @@ func (s *Syncer) processChecklistItem(item things.Item, serverIndex int, ts time
 
 // processTombstone handles tombstone deletion records.
 // Tombstones are used for permanent deletions in Things Cloud.
-func (s *Syncer) processTombstone(item things.Item, serverIndex int, ts time.Time) ([]Change, error) {
+func (s *Syncer) processTombstone(item things.Item, serverIndex int, ts time.Time, legacy bool) ([]Change, error) {
 	// Unmarshal the tombstone payload
 	var payload things.TombstoneActionItemPayload
 	if err := json.Unmarshal(item.P, &payload); err != nil {
@@ -416,6 +450,9 @@ func (s *Syncer) processTombstone(item things.Item, serverIndex int, ts time.Tim
 	}
 
 	deletedUUID := payload.DeletedObjectID
+	if legacy {
+		deletedUUID = things.EncodeLegacyIdentifier(deletedUUID)
+	}
 	var changes []Change
 
 	// Try to find and delete the object in each table

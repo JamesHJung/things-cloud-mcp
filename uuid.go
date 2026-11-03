@@ -1,6 +1,7 @@
 package thingscloud
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"math/big"
 	"strings"
@@ -160,4 +161,107 @@ func IsCanonicalBase58UUID(id string) bool {
 		return false
 	}
 	return EncodeUUID(u) == id
+}
+
+// Legacy identifier migration
+//
+// Things Cloud moved from UUID-style identifiers to Base58 ones and wrote no
+// mapping records into the history. The current identifier of a pre-migration
+// object is derived by hashing the old one, and that derivation is the only
+// link between the two generations:
+//
+//	Base58( SHA1(legacyID)[:16] )
+//
+// Legacy-kind history items (Task3, Task4, Area2, Tag3, ...) key objects by the
+// old identifier; current-kind items (Task6, Task7, Area3, Tag4, ...) key the
+// same object by the derived one. A replay that takes each item's identifier at
+// face value therefore splits one object across two keys, and each half ends up
+// holding an arbitrary subset of the truth — one with the title and an old
+// status, the other with a later status and no title.
+//
+// Credit for the derivation goes to arthursoares/things-cloud-sdk.
+
+// EncodeLegacyIdentifier derives the current Base58 identifier for an object
+// created before Things Cloud's identifier migration.
+//
+// legacyID must be the identifier text exactly as the history stores it:
+// hashing is byte-exact, so normalising it (lowercasing a UUID, trimming) gives
+// a different and wrong identifier. The empty string is returned unchanged — a
+// malformed item should keep an obviously bogus key rather than acquire a
+// plausible-looking derived one. SHA-1 mirrors what Things itself does; it is
+// not being used as a security primitive.
+func EncodeLegacyIdentifier(legacyID string) string {
+	if legacyID == "" {
+		return ""
+	}
+
+	input := []byte(legacyID)
+	if prefix, suffix, ok := splitLegacyRecurrenceIdentifier(legacyID); ok {
+		// A repeating instance has a composite <uuid>-YYYYMMDD identifier and
+		// hashes in two steps: the uuid prefix alone, then its raw digest
+		// followed by the date text.
+		prefixSum := sha1.Sum([]byte(prefix))
+		input = make([]byte, 0, len(prefixSum)+len(suffix))
+		input = append(input, prefixSum[:]...)
+		input = append(input, suffix...)
+	}
+
+	sum := sha1.Sum(input)
+	var u uuid.UUID
+	copy(u[:], sum[:len(u)])
+	return EncodeUUID(u)
+}
+
+// splitLegacyRecurrenceIdentifier recognises a repeating instance's composite
+// <uuid>-YYYYMMDD identifier, returning the uuid prefix and the date suffix.
+func splitLegacyRecurrenceIdentifier(id string) (string, []byte, bool) {
+	const uuidLength = 36
+	const dateSuffixLength = len("-YYYYMMDD")
+
+	if len(id) != uuidLength+dateSuffixLength {
+		return "", nil, false
+	}
+	prefix := id[:uuidLength]
+	if _, err := uuid.Parse(prefix); err != nil || id[uuidLength] != '-' {
+		return "", nil, false
+	}
+	for i := uuidLength + 1; i < len(id); i++ {
+		if id[i] < '0' || id[i] > '9' {
+			return "", nil, false
+		}
+	}
+	return prefix, []byte(id[uuidLength:]), true
+}
+
+// IsLegacyIdentifier reports whether id predates Things Cloud's identifier
+// migration, and so keys its object by a value that must be derived.
+//
+// The test is whether the identifier is expressible in Base58 at all. Every
+// current identifier is, by construction; every pre-migration one observed in a
+// real history is not, because all of them contain a hyphen:
+//
+//	14B75398-06A8-43C3-8E13-AF9D5148EA86            a task, area or tag
+//	14B75398-06A8-43C3-8E13-AF9D5148EA86-20261102   a repeating instance
+//	ACTIONGROUP-019730CD-41A7-4B89-89E1-A33C3C49AAB5 a heading
+//	CC-Things-Tag-Errand                            a built-in tag
+//
+// Testing the character set rather than enumerating those shapes matters: the
+// heading and built-in-tag forms were found only by noticing that references to
+// them had stopped resolving, and there is no reason to assume the list is
+// complete.
+//
+// It also deliberately does not ask whether the identifier is *canonical*
+// Base58. A short, non-canonical one — which this server generated itself
+// before the leading-zero bug was fixed — is current, not legacy, and deriving
+// it would relocate an object that merely has a malformed key.
+func IsLegacyIdentifier(id string) bool {
+	if id == "" {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if !strings.ContainsRune(base58Alphabet, rune(id[i])) {
+			return true
+		}
+	}
+	return false
 }

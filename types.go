@@ -78,10 +78,11 @@ var (
 	ItemKindCommand  ItemKind = "Command"
 	ItemKindCommand3 ItemKind = "Command3"
 	// ItemKindTag identifies a Tag
-	ItemKindTag       ItemKind = "Tag3"
-	ItemKindTag4      ItemKind = "Tag4"
-	ItemKindTagPlain  ItemKind = "Tag"
-	ItemKindTombstone ItemKind = "Tombstone2"
+	ItemKindTag            ItemKind = "Tag3"
+	ItemKindTag4           ItemKind = "Tag4"
+	ItemKindTagPlain       ItemKind = "Tag"
+	ItemKindTombstone      ItemKind = "Tombstone2"
+	ItemKindTombstonePlain ItemKind = "Tombstone"
 )
 
 // Timestamp allows unix epochs represented as float or ints to be unmarshalled

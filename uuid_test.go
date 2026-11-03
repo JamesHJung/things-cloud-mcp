@@ -152,3 +152,37 @@ func TestNewUUIDIsAlwaysCanonical(t *testing.T) {
 		}
 	}
 }
+
+// Every pre-migration identifier shape observed in a real history, and the
+// current forms that must not be mistaken for one.
+func TestIsLegacyIdentifier(t *testing.T) {
+	t.Parallel()
+
+	legacy := map[string]string{
+		"hyphenated uuid":    "14B75398-06A8-43C3-8E13-AF9D5148EA86",
+		"repeating instance": "14B75398-06A8-43C3-8E13-AF9D5148EA86-20261102",
+		"heading":            "ACTIONGROUP-019730CD-41A7-4B89-89E1-A33C3C49AAB5",
+		"built-in tag":       "CC-Things-Tag-Errand",
+		"lowercase uuid":     "14b75398-06a8-43c3-8e13-af9d5148ea86",
+	}
+	for name, id := range legacy {
+		if !IsLegacyIdentifier(id) {
+			t.Errorf("%s (%q) should be legacy", name, id)
+		}
+		if d := EncodeLegacyIdentifier(id); d == id || !IsCanonicalBase58UUID(d) {
+			t.Errorf("%s (%q) derived to %q, which is not a canonical Base58 identifier", name, id, d)
+		}
+	}
+
+	current := map[string]string{
+		"canonical base58": "3KpQ7mWnXbTd2vZyRf9Jah",
+		// Produced by the old leading-zero bug: malformed, but still current.
+		"short base58": "4GLZcTnKy8oytFuCbwzF",
+		"empty":        "",
+	}
+	for name, id := range current {
+		if IsLegacyIdentifier(id) {
+			t.Errorf("%s (%q) must not be treated as legacy", name, id)
+		}
+	}
+}

@@ -360,11 +360,17 @@ Full analysis, with the measured payload distributions and the SQL that
 demonstrates each defect:
 [docs/2026-11-02-sync-deletion-cascade-fix.md](docs/2026-11-02-sync-deletion-cascade-fix.md).
 
-**One known, unfixed defect:** objects predating Things Cloud's identifier
-migration are stored under two different keys, so some tasks exist as torn
-pairs — title on one row, current status on the other. Diagnosed and measured,
-deliberately not yet fixed:
-[docs/2026-11-03-legacy-identifier-derivation.md](docs/2026-11-03-legacy-identifier-derivation.md).
+- **Objects predating Things Cloud's identifier migration were split in two.**
+  That migration derives each object's new identifier by hashing the old one
+  (`Base58(SHA1(legacyID)[:16])`) and records no mapping, so legacy-kind history
+  items key an object by the old identifier while current-kind items key the
+  same object by the derived one. Taking each at face value tore one object into
+  two rows, each holding an arbitrary subset of its history — one with the title
+  and a stale status, the other with a later status and no title. Confirmed
+  against the Things app and fixed; on the account this was developed against it
+  reconciled 650 legacy-keyed rows and applied 202 deletions that had been
+  landing on the phantom half.
+  [Full analysis.](docs/2026-11-03-legacy-identifier-derivation.md)
 
 ## Operational Notes
 

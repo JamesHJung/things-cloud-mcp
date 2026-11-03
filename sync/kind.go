@@ -69,3 +69,34 @@ func materializesEntity(f entityFamily) bool {
 	}
 	return false
 }
+
+// isLegacyItemKind reports whether an item kind predates Things Cloud's
+// identifier migration, and therefore keys objects by the old identifier
+// rather than the derived one. See things.EncodeLegacyIdentifier.
+//
+// This is an explicit list, not a version-suffix rule: the boundary is a
+// one-off migration, not the ongoing version drift classifyKind handles. Area2
+// is legacy while Area3 is current; Tag3 is legacy while Tag4 is current.
+func isLegacyItemKind(kind things.ItemKind) bool {
+	switch kind {
+	case things.ItemKindTaskPlain, things.ItemKindTask3, things.ItemKindTask4,
+		things.ItemKindChecklistItem, things.ItemKindChecklistItem2,
+		things.ItemKindAreaPlain, things.ItemKindArea,
+		things.ItemKindTagPlain, things.ItemKindTag,
+		things.ItemKindTombstonePlain:
+		return true
+	default:
+		return false
+	}
+}
+
+// deriveLegacyIDs rewrites identifier references in place.
+//
+// Identifier lists inside a legacy payload only ever hold legacy identifiers,
+// because Things hashed the stored text verbatim during the migration, so every
+// entry is rewritten unconditionally.
+func deriveLegacyIDs(ids []string) {
+	for i := range ids {
+		ids[i] = things.EncodeLegacyIdentifier(ids[i])
+	}
+}
