@@ -94,6 +94,11 @@ func isRetryableError(err error) bool {
 		strings.Contains(errStr, "504")
 }
 
+// changeLogColumns is the column list every change_log read shares, so the
+// queries cannot drift apart from scanChangeLog's expectations.
+const changeLogColumns = `id, server_index, synced_at, change_type, entity_type,
+	entity_uuid, payload, item_kind, item_action`
+
 // Sync fetches new items from Things Cloud, updates local state,
 // and returns the list of changes in order
 func (s *Syncer) Sync() ([]Change, error) {
@@ -218,7 +223,7 @@ func (s *Syncer) ChangesSince(timestamp time.Time) ([]Change, error) {
 	defer s.mu.RUnlock()
 
 	rows, err := s.rawDB.Query(`
-			SELECT id, server_index, synced_at, change_type, entity_type, entity_uuid, payload
+			SELECT `+changeLogColumns+`
 			FROM change_log
 			WHERE synced_at > ?
 			ORDER BY id
@@ -237,7 +242,7 @@ func (s *Syncer) ChangesSinceIndex(serverIndex int) ([]Change, error) {
 	defer s.mu.RUnlock()
 
 	rows, err := s.rawDB.Query(`
-			SELECT id, server_index, synced_at, change_type, entity_type, entity_uuid, payload
+			SELECT `+changeLogColumns+`
 			FROM change_log
 			WHERE server_index > ?
 			ORDER BY id
@@ -256,7 +261,7 @@ func (s *Syncer) ChangesForEntity(entityUUID string) ([]Change, error) {
 	defer s.mu.RUnlock()
 
 	rows, err := s.rawDB.Query(`
-			SELECT id, server_index, synced_at, change_type, entity_type, entity_uuid, payload
+			SELECT `+changeLogColumns+`
 			FROM change_log
 			WHERE entity_uuid = ?
 			ORDER BY id
@@ -273,29 +278,41 @@ func (s *Syncer) scanChangeLog(rows *sql.Rows) ([]Change, error) {
 	var changes []Change
 
 	for rows.Next() {
-		var id int
-		var serverIndex int
-		var syncedAt int64
-		var changeType, entityType, entityUUID string
-		var payload sql.NullString
+		var (
+			id          int
+			serverIndex int
+			syncedAt    int64
+			changeType  string
+			entityType  string
+			entityUUID  string
+			payload     sql.NullString
+			itemKind    sql.NullString
+			itemAction  sql.NullInt64
+		)
 
-		if err := rows.Scan(&id, &serverIndex, &syncedAt, &changeType, &entityType, &entityUUID, &payload); err != nil {
+		if err := rows.Scan(&id, &serverIndex, &syncedAt, &changeType, &entityType,
+			&entityUUID, &payload, &itemKind, &itemAction); err != nil {
 			return nil, err
 		}
 
-		base := baseChange{
-			serverIndex: serverIndex,
-			timestamp:   time.Unix(syncedAt, 0),
-		}
-
-		// Return UnknownChange with the change type as details
-		// A more complete implementation would reconstruct full typed changes
-		changes = append(changes, UnknownChange{
-			baseChange: base,
-			entityType: entityType,
-			entityUUID: entityUUID,
-			Details:    changeType,
+		changes = append(changes, LoggedChange{
+			baseChange: baseChange{
+				serverIndex: serverIndex,
+				timestamp:   time.Unix(syncedAt, 0),
+			},
+			changeType:  changeType,
+			entityType:  entityType,
+			entityUUID:  entityUUID,
+			payload:     payload.String,
+			itemKind:    itemKind.String,
+			itemAction:  int(itemAction.Int64),
+			hasEnvelope: itemKind.Valid && itemAction.Valid,
 		})
+	}
+
+	// Without this a truncated result set reads as a complete one.
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return changes, nil

@@ -636,6 +636,56 @@ func (c UnknownChange) EntityUUID() string {
 	return c.entityUUID
 }
 
+// LoggedChange is a change read back from the persisted change_log.
+//
+// The log stores the semantic change *type* but not the type-specific fields
+// that the live Change values carry, so a replayed change cannot be
+// reconstituted as its original concrete type. It must not be reported as
+// UnknownChange either: that label is reserved for items this parser genuinely
+// could not classify, and using it here made every historical change — a
+// completion, a reschedule, a rename — indistinguishable from a parse failure,
+// and broke any filtering that switches on ChangeType().
+type LoggedChange struct {
+	baseChange
+	changeType  string
+	entityType  string
+	entityUUID  string
+	payload     string
+	itemKind    string
+	itemAction  int
+	hasEnvelope bool
+}
+
+// ChangeType returns the semantic change type as it was recorded.
+func (c LoggedChange) ChangeType() string {
+	return c.changeType
+}
+
+// EntityType returns the recorded entity type.
+func (c LoggedChange) EntityType() string {
+	return c.entityType
+}
+
+// EntityUUID returns the recorded entity UUID.
+func (c LoggedChange) EntityUUID() string {
+	return c.entityUUID
+}
+
+// Payload returns the raw Things Cloud item payload stored with the entry.
+func (c LoggedChange) Payload() string {
+	return c.payload
+}
+
+// Envelope returns the raw Things Cloud item kind and action that produced this
+// change. The second result is false for rows written before schema version 5,
+// which did not record them.
+func (c LoggedChange) Envelope() (things.ItemKind, things.ItemAction, bool) {
+	if !c.hasEnvelope {
+		return "", 0, false
+	}
+	return things.ItemKind(c.itemKind), things.ItemAction(c.itemAction), true
+}
+
 // Compile-time interface implementation checks
 var (
 	_ Change = (*TaskCreated)(nil)
@@ -685,4 +735,5 @@ var (
 	_ Change = (*ChecklistItemTitleChanged)(nil)
 
 	_ Change = (*UnknownChange)(nil)
+	_ Change = (*LoggedChange)(nil)
 )
