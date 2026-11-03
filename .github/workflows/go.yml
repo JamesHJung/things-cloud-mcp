@@ -45,7 +45,10 @@ jobs:
         with:
           go-version-file: go.mod
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 is the first action release that accepts golangci-lint v2, which
+        # is what .golangci.yml declares. The version is pinned so CI runs the
+        # same linter as local development.
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.15.0
 
