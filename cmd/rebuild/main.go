@@ -22,7 +22,24 @@ import (
 	"github.com/arthursoares/things-cloud-sdk/sync"
 )
 
-func defaultDBPath() string {
+// containerDBPath is where server/main.go opens its database inside the
+// container image, and therefore where a NAS/Docker deployment keeps it.
+const containerDBPath = "/data/things.db"
+
+// resolveDBPath picks the database to operate on, in order of precedence:
+// the -db flag, THINGS_DB_PATH, the container path if it exists, then the
+// local CLI default. The container fallback means `docker exec <container>
+// things-rebuild` needs no arguments.
+func resolveDBPath(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if env := os.Getenv("THINGS_DB_PATH"); env != "" {
+		return env
+	}
+	if _, err := os.Stat(containerDBPath); err == nil {
+		return containerDBPath
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "sync.db"
@@ -46,17 +63,16 @@ func printDiagnostics(label string, d sync.Diagnostics) {
 }
 
 func main() {
-	dbPath := flag.String("db", "", "Path to the SQLite sync database (default: ~/.things-workflow/sync.db)")
+	dbPath := flag.String("db", "",
+		"Path to the SQLite sync database (default: $THINGS_DB_PATH, else "+
+			containerDBPath+" if present, else ~/.things-workflow/sync.db)")
 	diagnoseOnly := flag.Bool("diagnose", false, "Report integrity problems without modifying the database")
 	deleteAreaContents := flag.Bool("delete-area-contents", false,
 		"On AreaDeleted, delete the area's projects and to-dos instead of keeping them "+
 			"and clearing their area reference (the default, which is what Things does)")
 	flag.Parse()
 
-	path := *dbPath
-	if path == "" {
-		path = defaultDBPath()
-	}
+	path := resolveDBPath(*dbPath)
 
 	if _, err := os.Stat(path); err != nil {
 		log.Fatalf("database %s: %v", path, err)
