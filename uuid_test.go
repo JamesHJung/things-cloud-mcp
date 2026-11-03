@@ -1,6 +1,11 @@
 package thingscloud
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 // Fixtures are synthetic: these tests check the *shape* of an identifier, not
 // any particular item.
@@ -56,5 +61,88 @@ func TestIsBase58UUIDRejectsHyphenated(t *testing.T) {
 	t.Parallel()
 	if IsBase58UUID("A1B2C3D4-E5F6-4789-8ABC-DEF012345678") {
 		t.Error("a hyphenated UUID must not match the Base58 form")
+	}
+}
+
+// Base58 is a big-integer encoding, so a leading zero byte has no numeric
+// weight and disappears unless encoded as a leading '1'. An encoder that drops
+// it emits a short identifier that Things cannot decode to 16 bytes, which
+// corrupts the sync history. It happens for about 1 UUID in 256.
+func TestEncodeUUIDIsCanonicalForLeadingZeros(t *testing.T) {
+	t.Parallel()
+
+	mk := func(zeros int) uuid.UUID {
+		var u uuid.UUID
+		for i := range u {
+			u[i] = byte(i + 1)
+		}
+		for i := 0; i < zeros; i++ {
+			u[i] = 0
+		}
+		return u
+	}
+
+	for _, zeros := range []int{0, 1, 2, 5, 15, 16} {
+		u := mk(zeros)
+		enc := EncodeUUID(u)
+
+		if got := strings.IndexFunc(enc, func(r rune) bool { return r != '1' }); zeros > 0 && got != zeros && !(zeros == 16 && got == -1) {
+			t.Errorf("%d leading zero byte(s): encoding %q has %d leading '1's", zeros, enc, got)
+		}
+
+		back, err := DecodeUUID(enc)
+		if err != nil {
+			t.Errorf("%d leading zero byte(s): %q does not decode: %v", zeros, enc, err)
+			continue
+		}
+		if back != u {
+			t.Errorf("%d leading zero byte(s): round-trip gave %v, want %v", zeros, back, u)
+		}
+		if !IsCanonicalBase58UUID(enc) {
+			t.Errorf("%d leading zero byte(s): %q is not canonical", zeros, enc)
+		}
+	}
+}
+
+func TestDecodeUUIDRejectsShortEncodings(t *testing.T) {
+	t.Parallel()
+
+	// What the old encoder produced for a UUID with one leading zero byte:
+	// the same digits, without the leading '1'.
+	var u uuid.UUID
+	for i := range u {
+		u[i] = byte(i + 1)
+	}
+	u[0] = 0
+	canonical := EncodeUUID(u)
+	short := strings.TrimPrefix(canonical, "1")
+
+	if short == canonical {
+		t.Fatal("fixture did not have a leading 1")
+	}
+	if _, err := DecodeUUID(short); err == nil {
+		t.Errorf("DecodeUUID(%q) succeeded; a 15-byte decode must be rejected", short)
+	}
+	if IsCanonicalBase58UUID(short) {
+		t.Errorf("%q reported canonical", short)
+	}
+
+	for _, bad := range []string{"", "0OIl", "not base58!"} {
+		if _, err := DecodeUUID(bad); err == nil {
+			t.Errorf("DecodeUUID(%q) succeeded", bad)
+		}
+	}
+}
+
+func TestNewUUIDIsAlwaysCanonical(t *testing.T) {
+	t.Parallel()
+	for i := 0; i < 2000; i++ {
+		id := NewUUID()
+		if !IsCanonicalBase58UUID(id) {
+			t.Fatalf("NewUUID produced a non-canonical identifier: %q", id)
+		}
+		if !IsValidItemUUID(id) {
+			t.Fatalf("NewUUID produced an identifier the validator rejects: %q", id)
+		}
 	}
 }

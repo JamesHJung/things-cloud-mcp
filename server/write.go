@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
-	"math/big"
 	"net/http"
 	"strings"
 	gosync "sync"
 	"time"
 
 	thingscloud "github.com/JamesHJung/things-cloud-mcp"
-	"github.com/google/uuid"
 )
 
 // historyMu serializes all write operations (history.Sync + history.Write)
@@ -173,21 +171,11 @@ func validateUUIDSlice(name string, ids []string) ([]string, error) {
 	return out, nil
 }
 
+// generateUUID returns a fresh canonical Base58 identifier. The encoding must
+// be canonical — a non-canonical one corrupts the Things sync history. See
+// thingscloud.EncodeUUID.
 func generateUUID() string {
-	u := uuid.New()
-	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	n := new(big.Int).SetBytes(u[:])
-	base := big.NewInt(58)
-	mod := new(big.Int)
-	var encoded []byte
-	for n.Sign() > 0 {
-		n.DivMod(n, base, mod)
-		encoded = append(encoded, alphabet[mod.Int64()])
-	}
-	for i, j := 0, len(encoded)-1; i < j; i, j = i+1, j-1 {
-		encoded[i], encoded[j] = encoded[j], encoded[i]
-	}
-	return string(encoded)
+	return thingscloud.NewUUID()
 }
 
 // syncForRead syncs before a read operation, logging any errors.

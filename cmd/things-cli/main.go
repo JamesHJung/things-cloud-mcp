@@ -4,14 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"math/big"
 	"os"
 	"strings"
 	"time"
 
 	thingscloud "github.com/JamesHJung/things-cloud-mcp"
 	memory "github.com/JamesHJung/things-cloud-mcp/state/memory"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -132,23 +130,11 @@ func defaultExtension() WireExtension {
 	return WireExtension{Sn: map[string]any{}, TypeTag: "oo"}
 }
 
+// generateUUID returns a fresh canonical Base58 identifier. The encoding must
+// be canonical — a non-canonical one corrupts the Things sync history. See
+// thingscloud.EncodeUUID.
 func generateUUID() string {
-	u := uuid.New()
-	// Base58 alphabet (Bitcoin/Flickr): no 0, O, I, l
-	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	n := new(big.Int).SetBytes(u[:])
-	base := big.NewInt(58)
-	mod := new(big.Int)
-	var encoded []byte
-	for n.Sign() > 0 {
-		n.DivMod(n, base, mod)
-		encoded = append(encoded, alphabet[mod.Int64()])
-	}
-	// Reverse (big-endian)
-	for i, j := 0, len(encoded)-1; i < j; i, j = i+1, j-1 {
-		encoded[i], encoded[j] = encoded[j], encoded[i]
-	}
-	return string(encoded)
+	return thingscloud.NewUUID()
 }
 
 func nowTs() float64 {
