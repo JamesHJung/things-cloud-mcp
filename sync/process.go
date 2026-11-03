@@ -225,9 +225,9 @@ func (s *Syncer) processAreaItem(item things.Item, serverIndex int, ts time.Time
 		return nil, fmt.Errorf("getting area %s: %w", item.UUID, err)
 	}
 
-	// Handle deletion. Deleting an area takes the projects and to-dos filed
-	// under it with it (see cascadeAreaDelete), which Things Cloud does not
-	// send separate items for.
+	// Handle deletion. Things Cloud sends no items for the area's contents, so
+	// their fate is decided locally: by default the rows are kept and their
+	// now-dangling area reference is cleared. See AreaDeleteMode.
 	if item.Action == things.ItemActionDeleted {
 		if _, err := s.cascadeAreaDelete(item.UUID); err != nil {
 			return nil, err
