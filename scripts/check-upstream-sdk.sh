@@ -62,6 +62,8 @@ def bucket(subject):
         return "noise"
     return "other"
 
+head_sha = commits[-1]["sha"]
+
 groups = {"fix": [], "other": [], "noise": []}
 for c in commits:
     subject = c["commit"]["message"].splitlines()[0]
@@ -85,7 +87,11 @@ if md:
         print()
     print(f"[Full comparison](https://github.com/{upstream}/compare/{marker}...HEAD)\n")
     print("When this has been worked through, move the SHA in "
-          "`.github/upstream-sdk-synced` forward and close this issue.")
+          "`.github/upstream-sdk-synced` forward and close this issue.\n")
+    # The head this listing describes. The workflow reads it back out of an
+    # existing issue to tell "nothing new since last week" from "more arrived",
+    # so it can stay silent in the first case and notify in the second.
+    print(f"<!-- upstream-head: {head_sha} -->")
 else:
     print(f"{len(commits)} new commit(s) on {upstream} since {marker[:9]}:\n")
     for key, title in (("fix", "FIXES"), ("other", "OTHER"), ("noise", "ci/docs/tests")):

@@ -58,20 +58,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BODY: ${{ steps.check.outputs.body }}
           TITLE: "Upstream SDK: commits awaiting review"
+          OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           gh label create upstream-sdk --color BFD4F2 \
             --description "Tracks unreviewed arthursoares/things-cloud-sdk changes" 2>/dev/null || true
 
+          # The listing carries the upstream head it describes.
+          head="$(printf '%s' "$BODY" | sed -n 's/.*<!-- upstream-head: \([0-9a-f]*\) -->.*/\1/p' | tail -1)"
+
           existing="$(gh issue list --label upstream-sdk --state open \
             --json number --jq '.[0].number // empty')"
 
-          if [ -n "$existing" ]; then
-            # Replace the body so the checklist always reflects the current gap,
-            # rather than accumulating a new issue every week.
-            printf '%s\n' "$BODY" | gh issue edit "$existing" --body-file -
-            echo "updated issue #$existing"
-          else
+          if [ -z "$existing" ]; then
+            # Assigned, because an assignment notifies regardless of how the
+            # repository is being watched. Creating an issue may not.
             printf '%s\n' "$BODY" | gh issue create --title "$TITLE" \
-              --label upstream-sdk --body-file -
+              --label upstream-sdk --assignee "$OWNER" --body-file -
+            echo "opened a tracking issue"
+            exit 0
           fi
+
+          # Already open. If it already describes this upstream head then
+          # nothing has arrived since the last run, and rewriting the body
+          # weekly would be pointless work that notifies nobody anyway.
+          if [ -n "$head" ] && gh issue view "$existing" --json body --jq .body \
+               | grep -q "upstream-head: $head"; then
+            echo "issue #$existing is already current for $head; nothing to do"
+            exit 0
+          fi
+
+          printf '%s\n' "$BODY" | gh issue edit "$existing" --body-file -
+          # Editing a body sends no notification, so say it in a comment.
+          gh issue comment "$existing" --body \
+            "More upstream commits have arrived since this issue was last updated. The checklist above now runs to \`${head:0:9}\`."
+          echo "updated issue #$existing and commented"
