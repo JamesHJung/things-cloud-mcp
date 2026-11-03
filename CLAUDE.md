@@ -98,6 +98,17 @@ the two transports cannot expose different capabilities.
 In stdio mode **stdout carries the protocol** — never write to it. `log` goes to
 stderr, which is correct and where clients surface server output.
 
+### Build identity
+
+`server/version.go` reads the Go toolchain's VCS stamp, so the running build is
+always identifiable: `-version` on the binary, the `/` health endpoint, the MCP
+`serverInfo` version, the startup log, and the read-only `things_server_info`
+tool. Do not reintroduce a hardcoded version string — the previous `"1.1.0"`
+literal was never bumped and told nobody anything.
+
+`go test` binaries carry no VCS stamp, only `go build` ones, so the stamp is
+asserted in CI by building and running `-version` rather than by a unit test.
+
 ### Test Infrastructure
 
 Tests use `httptest.Server` with pre-recorded JSON responses in the `tapes/` directory. Tests use `t.Parallel()`.

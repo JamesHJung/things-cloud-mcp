@@ -37,6 +37,19 @@ jobs:
       - name: Test (race detector, with coverage)
         run: go test -race -cover ./...
 
+      # The commit a binary was built from is how a deployment is identified,
+      # so a build that fails to record it is a real regression. `go test`
+      # binaries carry no VCS stamp, only `go build` ones, which is why this
+      # cannot be a unit test.
+      - name: Binary reports its build
+        run: |
+          go build -o /tmp/things-server ./server/
+          out="$(/tmp/things-server -version)"
+          echo "reported: $out"
+          case "$out" in
+            unknown*) echo "::error::binary does not record the commit it was built from"; exit 1 ;;
+          esac
+
   lint:
     runs-on: ubuntu-latest
     steps:

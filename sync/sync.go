@@ -236,6 +236,19 @@ func (s *Syncer) Sync() ([]Change, error) {
 	return allChanges, nil
 }
 
+// SchemaVersion returns the database's schema version, which tells a caller
+// whether a migration this build expects has actually been applied.
+func (s *Syncer) SchemaVersion() (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var v int
+	if err := s.rawDB.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&v); err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
 // LastSyncedIndex returns the server index we've synced up to
 func (s *Syncer) LastSyncedIndex() int {
 	s.mu.RLock()

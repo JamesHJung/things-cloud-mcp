@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -751,6 +752,31 @@ type smokeCheck struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// mcpServerInfo answers "is this deployment running the code I think it is?"
+// directly, instead of by inference from behaviour that changes with every
+// release.
+func mcpServerInfo(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	b := currentBuild()
+
+	out := map[string]any{
+		"build": b,
+		"transport": map[string]any{
+			"mcp_auth_required": os.Getenv("MCP_TOKEN") != "",
+		},
+	}
+
+	// Deliberately not fatal: the build identity is the point of this tool and
+	// is still worth returning if the database cannot be read.
+	if v, err := syncer.SchemaVersion(); err == nil {
+		out["schema_version"] = v
+	} else {
+		out["schema_version_error"] = err.Error()
+	}
+	out["sync_cursor"] = syncer.LastSyncedIndex()
+
+	return jsonToolResultWithIndent(out, true), nil
+}
+
 func mcpSmokeTest(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var checks []smokeCheck
 
@@ -898,7 +924,9 @@ func newMCPHandler() http.Handler {
 // Streamable HTTP by newMCPHandler and over stdio by the -stdio flag, so the
 // two transports cannot drift apart in which tools they expose.
 func newMCPServer() *server.MCPServer {
-	s := server.NewMCPServer("Things Cloud", "1.1.0")
+	// The version reported to clients is the actual build, not a literal that
+	// nothing bumps.
+	s := server.NewMCPServer("Things Cloud", currentBuild().String())
 
 	// --- Read tools ---
 
@@ -1342,6 +1370,11 @@ func newMCPServer() *server.MCPServer {
 	), mcpDeleteChecklistItem)
 
 	// --- Diagnostic tools ---
+
+	s.AddTool(mcp.NewTool("things_server_info",
+		mcp.WithDescription("Report which build of the server is running: commit, build time, whether it was built from a dirty tree, plus the database schema version and sync cursor. Read-only; makes no changes and contacts no external service."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), mcpServerInfo)
 
 	s.AddTool(mcp.NewTool("things_smoke_test",
 		mcp.WithDescription("Run a smoke test that creates a task, verifies read/edit/complete, then cleans up. Returns pass/fail results for each check."),

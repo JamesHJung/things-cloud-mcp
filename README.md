@@ -372,6 +372,34 @@ demonstrates each defect:
   landing on the phantom half.
   [Full analysis.](docs/2026-11-03-legacy-identifier-derivation.md)
 
+## Which build is running?
+
+The server reports the commit it was built from, so this never has to be
+inferred from behaviour:
+
+```bash
+things-mcp -version            # 8508a168e (2026-11-03T06:00:26Z)
+curl https://your-host/        # {"service":…,"build":{"revision":…}}
+```
+
+Through MCP, ask the **`things_server_info`** tool. It is read-only and returns
+the commit, build time, whether the binary was built from a dirty tree, the
+database schema version and the sync cursor:
+
+```json
+{ "build": { "revision_short": "8508a168e", "built_at": "2026-11-03T06:00:26Z", "dirty": false },
+  "schema_version": 5, "sync_cursor": 4695 }
+```
+
+The commit comes from the Go toolchain's VCS stamp, which needs no
+configuration but does require the build to see a `.git` directory — true for
+`go build` in a checkout and for a Docker build from a git context. Failing
+that it reports `unknown`, and `-ldflags "-X main.version=…"` can supply one.
+CI fails the build if the binary cannot say what it was built from.
+
+A **dirty** flag means the tree had uncommitted changes, so the commit alone
+does not describe what is running.
+
 ## Operational Notes
 
 - **Startup is fail-fast.** The server now requires the initial sync to succeed before it starts serving REST or MCP traffic.

@@ -415,16 +415,26 @@ func serveStdio() error {
 }
 
 func main() {
+	showVersion := flag.Bool("version", false,
+		"Print the build this binary was made from and exit.")
+	stdio := flag.Bool("stdio", false,
+		"Serve MCP over stdin/stdout instead of HTTP, for a local MCP client "+
+			"that launches this process. No port is opened.")
+	flag.Parse()
+
+	// Answered before anything else is required: asking which build a binary
+	// is must work on a machine with no Things credentials, which is exactly
+	// where the question tends to be asked.
+	if *showVersion {
+		fmt.Println(currentBuild())
+		return
+	}
+
 	username := os.Getenv("THINGS_USERNAME")
 	password := os.Getenv("THINGS_PASSWORD")
 	if username == "" || password == "" {
 		log.Fatal("THINGS_USERNAME and THINGS_PASSWORD must be set")
 	}
-
-	stdio := flag.Bool("stdio", false,
-		"Serve MCP over stdin/stdout instead of HTTP, for a local MCP client "+
-			"that launches this process. No port is opened.")
-	flag.Parse()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -464,6 +474,7 @@ func main() {
 	if err := history.Sync(); err != nil {
 		log.Fatalf("failed to sync history: %v", err)
 	}
+	log.Printf("Build %s", currentBuild())
 	log.Println("History ready for writes")
 
 	// stdio mode stops here: same MCP server, different transport, no listener.
@@ -479,7 +490,11 @@ func main() {
 			jsonError(w, "not found", 404)
 			return
 		}
-		jsonResponse(w, map[string]string{"service": "things-cloud-api", "status": "ok"})
+		jsonResponse(w, map[string]any{
+			"service": "things-cloud-api",
+			"status":  "ok",
+			"build":   currentBuild(),
+		})
 	})
 
 	http.HandleFunc("/api/verify", authMiddleware(handleVerify))
