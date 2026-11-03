@@ -15,7 +15,12 @@ RUN CGO_ENABLED=1 go build -o things-server ./server/
 RUN CGO_ENABLED=1 go build -o things-rebuild ./cmd/rebuild/
 
 FROM alpine:latest
-RUN apk add --no-cache ca-certificates
+# bash is here for operators, not the server. The image now ships
+# things-rebuild, an interactive repair tool, and Synology's Container Manager
+# opens a container shell by launching /bin/bash with no way to change the
+# command — on a bare Alpine image that fails outright, leaving the tool
+# unreachable without SSH to the host. Costs a couple of MB.
+RUN apk add --no-cache ca-certificates bash
 COPY --from=builder /app/things-server /usr/local/bin/things-server
 COPY --from=builder /app/things-rebuild /usr/local/bin/things-rebuild
 
