@@ -2,7 +2,11 @@
 
 ## Status
 
-Closed. The original March 5 fixes addressed cursoring, concurrent sync, and read-path error surfacing. A later follow-up on **2026-03-15** fixed stale `today_index_ref` carry-over on partial task updates and added a schema migration that forces a clean local resync for old corrupted caches. See [2026-03-15-stability-wrap-up.md](2026-03-15-stability-wrap-up.md).
+Closed, then **reopened and closed again on 2026-11-02** — the original diagnosis was incomplete. See the postscript at the bottom.
+
+The March 5 fixes addressed cursoring, concurrent sync, and read-path error surfacing. A follow-up on 2026-03-15 fixed stale `today_index_ref` carry-over when later updates changed `sr` or `schedule` without sending a fresh `tir`, added the schema v4 migration that invalidates old cache state and forces a full resync (corrupted `sr`/`tir` rows could not be repaired in place), preserved real source `server_index` values when flattening multi-entity history slots, hid soft-deleted tasks from direct UUID lookups, and **standardized task movement detection on UTC day boundaries**.
+
+That last one is the part that mattered later.
 
 ## Summary
 
@@ -116,3 +120,17 @@ Use 3–5 repetitions to estimate whether residual lag is external (Things Cloud
 - classify overdue by `scheduled_for < today` and `status == "open"`,
 - separate deadline warnings (`deadline < today` with future/no schedule),
 - caveat overdue output as approximate when cloud sync lag is suspected.
+
+---
+
+## Postscript: the incomplete diagnosis (2026-11-02)
+
+Standardizing on **UTC day boundaries** in March was itself a bug, and it went unnoticed because it is invisible from the time zone this was investigated in.
+
+Things stores `scheduled_date`, `today_index_ref` and `deadline_date` as *date-only* values encoded as **midnight UTC** of the intended day — on a real database every such value is an exact multiple of 86400. So the UTC calendar date of a stored value *is* the local day the user meant. The window has to be built from the **local** calendar date while being expressed at **UTC** midnight.
+
+Using the UTC calendar date instead puts the window a day ahead for every local hour after UTC midnight. At UTC+0, where this incident was investigated, there is no such hour and the two forms coincide. At UTC-8 it is eight hours out of every twenty-four, during which Today silently returns tomorrow's tasks and drops today's.
+
+Both the `isToday`/`taskLocation` comparison and the `currentUTCDayBounds` query were affected. Fixed, with the invariant pinned by clock-injected tests across fixed zones and the suite now running under four time zones in CI.
+
+The symptoms reported here — under-reporting *and* over-reporting of Today, with stale `scheduled_for` values — are consistent with this as a contributing cause, alongside the cursoring and sync issues that were fixed at the time. Anyone re-reading this incident should treat "standardize on UTC" as the wrong lesson to draw from it.

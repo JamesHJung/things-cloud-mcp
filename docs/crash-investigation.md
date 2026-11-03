@@ -63,9 +63,18 @@ The server accepted any date for `when` and `deadline` fields, including dates i
 
 One area rename (commit 135) was sent without an `md` (modification date) field. All task modifies include `md`. This is a minor inconsistency — Things likely handles it gracefully.
 
-#### 4. Task6 delete with empty payload (NOT FIXED — unclear risk)
+#### 4. Task6 delete with empty payload (RESOLVED 2026-11-02 — not a bug)
 
-Two commits (9 and 270) used action type 2 (DELETE) on Task6 with an empty payload `{}`. This is different from trashing (action 1 with `tr: true`). The behavior of action type 2 is not well understood.
+Two commits (9 and 270) used action type 2 (DELETE) on Task6 with an empty payload `{}`, which is different from trashing (action 1 with `tr: true`).
+
+This is now understood: **action type 2 with an empty payload is Things' own native deletion form.** A read-only fetch of history index 4694 on a real account — the batch produced by emptying the Things trash — returns 348 items of exactly that shape:
+
+```
+e=Task7      t=2 (DELETE)  empty_payload=true   count=348
+e=Tombstone2 t=0 (create)  empty_payload=false  count=6
+```
+
+So the server was not sending something malformed; it was sending what the app sends. The real defect was on the *read* side — those deletions were being ignored, because routing matched a hard-coded list of entity kinds that `Task7` was not in. See [2026-11-02-sync-deletion-cascade-fix.md](2026-11-02-sync-deletion-cascade-fix.md).
 
 #### 5. `own-history-keys` API endpoint returns 404 (OBSERVED)
 

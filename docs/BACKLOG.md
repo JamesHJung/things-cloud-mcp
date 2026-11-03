@@ -1,23 +1,19 @@
-# Things MCP — Backlog
+# Backlog
 
-## Medium Priority
+Open items only. Completed entries are not kept here — the git history and the
+dated notes in this directory record what was done.
 
-### ~~Add area assignment on task edit~~ (Done)
-Added `area` parameter to `things_edit_task`. Set an area UUID to assign, or `"none"` to clear.
+For anything substantial, prefer a GitHub issue; this file is for protocol
+questions that have not been answered yet.
 
-### ~~Add notes clearing (`note: "none"`)~~ (Done)
-Added support for `note: "none"` on `things_edit_task` to clear notes, matching `deadline: "none"` pattern.
+## Investigate tag/area deletion via `Tombstone2`
 
-### ~~Add completed tasks list tool~~ (Done)
-Added `things_list_completed` tool (33rd tool). Returns completed tasks ordered by most recent, with optional `limit` parameter (default 50).
+Areas and tags cannot currently be deleted through the MCP tools. The SDK has a
+`Tombstone2` entity for explicit deletion — test whether writing one for a tag
+or area UUID actually deletes it server-side.
 
-## Lower Priority
-
-### ~~Add recurring task support~~ (Done)
-Added `repeat` parameter to `things_create_task` and `things_edit_task`. Supports: daily, weekly, monthly, yearly, every N days/weeks/months/years, after completion mode, and "none" to clear.
-
-### Investigate tag/area deletion via Tombstone2
-Areas and tags can't currently be deleted. The SDK supports `Tombstone2` entities for explicit deletion — test if writing a Tombstone2 for a tag/area UUID actually deletes it.
-
-### ~~Add subtask support~~ (Done)
-Added `parent_task` parameter to `things_create_task` and `things_edit_task`. Sets the `pr` wire field to the parent task UUID.
+Worth noting what is already known: `Tombstone2` creates *are* what Things
+sends alongside task deletions (6 of them in the trash-emptying batch analysed
+in [crash-investigation.md](crash-investigation.md#4-task6-delete-with-empty-payload-resolved-2026-11-02--not-a-bug)),
+and the sync engine already applies them via `processTombstone`. So the read
+side is handled; what is untested is writing one.
