@@ -65,6 +65,22 @@ jobs:
         with:
           version: v2.15.0
 
+  # Known-vulnerability scan. govulncheck reports only vulnerabilities the code
+  # can actually reach, so a finding is a real call path, not a dependency that
+  # merely exists. The toolchain is the latest patch of the Go minor the
+  # Dockerfile builds with, not go.mod's version: go-version-file would install
+  # exactly "1.25.5" and flag stdlib fixes that the shipped image already has.
+  # Keep go-version-input in step with the Dockerfile's golang tag.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: "1.25"
+          check-latest: true
+          go-package: ./...
+
   # Things stores its date fields as date-only values at midnight UTC, so
   # anything classifying "today" has to reconcile a local calendar date with a
   # UTC-encoded one. That went wrong undetected because the suite only ever ran
