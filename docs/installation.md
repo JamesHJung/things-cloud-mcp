@@ -5,7 +5,7 @@ Self-host the Things Cloud MCP server to connect Claude (or any MCP-compatible A
 ## Prerequisites
 
 - A [Things 3](https://culturedcode.com/things/) account with Things Cloud sync enabled
-- Either [Go 1.24+](https://go.dev/dl/) to build and run directly, or Docker to
+- Either [Go 1.26+](https://go.dev/dl/) to build and run directly, or Docker to
   run the container
 
 The server is a single static binary with an embedded SQLite database, so it
